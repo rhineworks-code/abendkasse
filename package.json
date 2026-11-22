@@ -1,0 +1,14 @@
+{
+  "name": "abendkasse",
+  "version": "0.1.0",
+  "description": "Wochen-Quiz für zwei: täglich Fragen, Auszahlung um 20 Uhr",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "DATA_DIR=./data node --disable-warning=ExperimentalWarning --watch src/server.js"
+  },
+  "engines": { "node": ">=22.13" },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

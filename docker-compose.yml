@@ -1,0 +1,22 @@
+services:
+  abendkasse:
+    image: ghcr.io/rhineworks-code/abendkasse:latest
+    # build: .                  # stattdessen lokal bauen: Zeile oben auskommentieren, diese aktivieren
+    container_name: abendkasse
+    restart: unless-stopped
+    ports:
+      - "8020:8084"         # Server-Port 8020 → Container-Port 8084
+    volumes:
+      - ./data:/data            # Datenbank + eigene Fragen (data/questions/*.json)
+    environment:
+      GAME_TZ: Europe/Berlin
+      PAYOUT_HOUR: 20           # Auszahlung um 20:00
+      QUESTIONS_PER_DAY: 10     # Standard für neue Spiele
+      JOKERS_PER_DAY: 1         # 50:50-Joker pro Spieler und Tag
+      POINTS_PER_CORRECT: 10
+      PERFECT_DAY_BONUS: 20
+      WEEK_WIN_BONUS: 100
+      MAX_PLAYERS: 2
+      PUBLIC_URL: ""            # externe Adresse für Einladungslinks, z. B. https://quiz.deinedomain.de
+      ADMIN_TOKEN: ""           # setzen, um /api/admin/* zu nutzen
+      WEBHOOK_URL: ""           # optional, z. B. https://homeassistant.local:8123/api/webhook/abendkasse

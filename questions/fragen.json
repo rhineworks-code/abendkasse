@@ -1,0 +1,100 @@
+{
+  "Allgemeinwissen": [
+    ["Wie viele Minuten hat ein Tag?", "1440", "1240", "1340", "1540"],
+    ["Welche Farbe entsteht, wenn man Blau und Gelb mischt?", "Grün", "Lila", "Orange", "Braun"],
+    ["Wie viele Karten hat ein Skatblatt?", "32", "36", "52", "24"],
+    ["Wie viele Bundesländer hat Deutschland?", "16", "14", "15", "18"],
+    ["Welches Tier ist das Wappentier Deutschlands?", "Adler", "Löwe", "Bär", "Hirsch"],
+    ["Wie viele Seiten hat ein Sechseck?", "6", "5", "7", "8"],
+    ["Was misst ein Barometer?", "Luftdruck", "Temperatur", "Luftfeuchtigkeit", "Windgeschwindigkeit"],
+    ["In welcher Stadt steht das Brandenburger Tor?", "Berlin", "Potsdam", "Brandenburg an der Havel", "Hamburg"],
+    ["Wie viele Tasten hat ein normales Klavier?", "88", "76", "92", "64"],
+    ["Wie nennt man ein Wort, das vorwärts und rückwärts gleich gelesen wird?", "Palindrom", "Anagramm", "Akronym", "Synonym"],
+    ["Wie viele Nullen hat eine Million?", "6", "5", "7", "9"]
+  ],
+  "Geografie": [
+    ["Was ist die Hauptstadt von Australien?", "Canberra", "Sydney", "Melbourne", "Perth"],
+    ["Welcher Fluss hat die längste Strecke innerhalb Deutschlands?", "Rhein", "Elbe", "Donau", "Main"],
+    ["Wie heißt der höchste Berg Deutschlands?", "Zugspitze", "Watzmann", "Feldberg", "Brocken"],
+    ["Welches ist die größte Insel der Welt?", "Grönland", "Neuguinea", "Borneo", "Madagaskar"],
+    ["In welchem Land liegt Machu Picchu?", "Peru", "Bolivien", "Chile", "Ecuador"],
+    ["Was ist die Hauptstadt von Kanada?", "Ottawa", "Toronto", "Montreal", "Vancouver"],
+    ["Welcher Ozean ist der größte?", "Pazifischer Ozean", "Atlantischer Ozean", "Indischer Ozean", "Arktischer Ozean"],
+    ["An welchem Fluss liegt Wien?", "Donau", "Rhein", "Elbe", "Inn"],
+    ["Welches ist das flächenmäßig größte Land der Erde?", "Russland", "Kanada", "China", "USA"],
+    ["In welchem Land liegt Marrakesch?", "Marokko", "Tunesien", "Algerien", "Ägypten"],
+    ["Welches Meer liegt zwischen Europa und Afrika?", "Mittelmeer", "Rotes Meer", "Schwarzes Meer", "Kaspisches Meer"]
+  ],
+  "Geschichte": [
+    ["In welchem Jahr fiel die Berliner Mauer?", "1989", "1990", "1987", "1991"],
+    ["Wer war der erste Bundeskanzler der Bundesrepublik Deutschland?", "Konrad Adenauer", "Ludwig Erhard", "Willy Brandt", "Theodor Heuss"],
+    ["In welchem Jahr betraten zum ersten Mal Menschen den Mond?", "1969", "1967", "1971", "1965"],
+    ["Welches Schiff sank 1912 nach der Kollision mit einem Eisberg?", "Titanic", "Lusitania", "Britannic", "Bismarck"],
+    ["Wer erfand in Europa den Buchdruck mit beweglichen Lettern?", "Johannes Gutenberg", "Martin Luther", "Albrecht Dürer", "Leonardo da Vinci"],
+    ["In welcher Stadt wurde Julius Caesar ermordet?", "Rom", "Alexandria", "Athen", "Karthago"],
+    ["In welchem Jahr endete der Zweite Weltkrieg in Europa?", "1945", "1944", "1946", "1943"],
+    ["Wer erreichte 1492 im Auftrag Spaniens Amerika?", "Christoph Kolumbus", "Vasco da Gama", "Ferdinand Magellan", "Amerigo Vespucci"],
+    ["In welchem Jahr wurde Deutschland wiedervereinigt?", "1990", "1989", "1991", "1992"],
+    ["Welcher Pharao wurde durch die Entdeckung seines Grabes 1922 berühmt?", "Tutanchamun", "Ramses II.", "Cheops", "Echnaton"]
+  ],
+  "Wissenschaft": [
+    ["Welches chemische Symbol hat Gold?", "Au", "Ag", "Go", "Gd"],
+    ["Wie viele Planeten hat unser Sonnensystem?", "8", "9", "7", "10"],
+    ["Wofür steht die Formel H₂O?", "Wasser", "Wasserstoffperoxid", "Sauerstoff", "Salz"],
+    ["Wie schnell ist Licht im Vakuum ungefähr?", "300.000 km/s", "30.000 km/s", "3.000.000 km/s", "150.000 km/s"],
+    ["Welcher Planet ist der Sonne am nächsten?", "Merkur", "Venus", "Mars", "Erde"],
+    ["Wie viele Knochen hat ein erwachsener Mensch ungefähr?", "206", "186", "256", "306"],
+    ["Wer entwickelte die Relativitätstheorie?", "Albert Einstein", "Isaac Newton", "Niels Bohr", "Max Planck"],
+    ["Bei wie viel Grad Celsius siedet Wasser auf Meereshöhe?", "100", "90", "110", "120"],
+    ["Welches Organ produziert Insulin?", "Bauchspeicheldrüse", "Leber", "Niere", "Milz"],
+    ["Welches Gas ist am häufigsten in der Erdatmosphäre?", "Stickstoff", "Sauerstoff", "Kohlendioxid", "Argon"]
+  ],
+  "Natur & Tiere": [
+    ["Welches ist das größte Tier der Erde?", "Blauwal", "Afrikanischer Elefant", "Pottwal", "Walhai"],
+    ["Wie viele Beine hat eine Spinne?", "8", "6", "10", "12"],
+    ["Welches ist das schnellste Landtier?", "Gepard", "Löwe", "Gabelbock", "Windhund"],
+    ["Wovon ernähren sich Große Pandas hauptsächlich?", "Bambus", "Eukalyptus", "Fisch", "Beeren"],
+    ["Wie nennt man ein junges Pferd?", "Fohlen", "Kalb", "Lamm", "Ferkel"],
+    ["Welcher Vogel kann auch rückwärts fliegen?", "Kolibri", "Schwalbe", "Spatz", "Falke"],
+    ["Wie viele Herzen hat ein Oktopus?", "3", "1", "2", "4"],
+    ["An welchem Baum wachsen Eicheln?", "Eiche", "Buche", "Ahorn", "Linde"],
+    ["Zu welcher Tiergruppe gehören Wale?", "Säugetiere", "Fische", "Amphibien", "Reptilien"],
+    ["Welches dieser Tiere hält Winterschlaf?", "Igel", "Reh", "Fuchs", "Wildschwein"]
+  ],
+  "Sport": [
+    ["Wie viele Spieler einer Fußballmannschaft stehen gleichzeitig auf dem Feld?", "11", "10", "12", "9"],
+    ["In welcher Sportart steht „Love“ für null Punkte?", "Tennis", "Badminton", "Squash", "Tischtennis"],
+    ["Wie lang ist ein Marathon?", "42,195 km", "40 km", "42,5 km", "41,195 km"],
+    ["Wo fanden die Olympischen Sommerspiele 2024 statt?", "Paris", "Los Angeles", "Tokio", "London"],
+    ["Wie viele Ringe hat das olympische Symbol?", "5", "4", "6", "7"],
+    ["Wie viele Punkte zählt im Basketball ein Wurf von jenseits der Dreierlinie?", "3", "2", "4", "1"],
+    ["Welche Farbe hat das Trikot des Gesamtführenden der Tour de France?", "Gelb", "Grün", "Rosa", "Weiß"],
+    ["Wie viele Felder hat ein Schachbrett?", "64", "49", "81", "100"],
+    ["Welche Sportart wird beim Turnier in Wimbledon gespielt?", "Tennis", "Golf", "Cricket", "Polo"],
+    ["Wie lange dauert ein reguläres Fußballspiel ohne Nachspielzeit?", "90 Minuten", "80 Minuten", "100 Minuten", "120 Minuten"]
+  ],
+  "Film & Musik": [
+    ["Wie viele Saiten hat eine Standard-Gitarre?", "6", "4", "5", "7"],
+    ["Wer komponierte die „Mondscheinsonate“?", "Ludwig van Beethoven", "Wolfgang Amadeus Mozart", "Johann Sebastian Bach", "Frédéric Chopin"],
+    ["Aus welchem Land stammt die Band ABBA?", "Schweden", "Norwegen", "Dänemark", "Finnland"],
+    ["Welcher Film gewann 1998 den Oscar als bester Film?", "Titanic", "Forrest Gump", "Gladiator", "Braveheart"],
+    ["Wie heißt der Zauberschüler mit der blitzförmigen Narbe?", "Harry Potter", "Frodo Beutlin", "Percy Jackson", "Eragon"],
+    ["Wer veröffentlichte 1982 das Album „Thriller“?", "Michael Jackson", "Prince", "Stevie Wonder", "Lionel Richie"],
+    ["In welcher Stadt wurde Mozart geboren?", "Salzburg", "Wien", "Prag", "München"],
+    ["Wer führte Regie bei „Jurassic Park“ (1993)?", "Steven Spielberg", "James Cameron", "George Lucas", "Ridley Scott"],
+    ["Welche deutsche Band hatte den Hit „Du hast“?", "Rammstein", "Die Toten Hosen", "Die Ärzte", "Scorpions"],
+    ["Welches Instrument spielt man mit einem Bogen?", "Cello", "Harfe", "Trompete", "Klavier"]
+  ],
+  "Technik & Games": [
+    ["Wofür steht „WWW“?", "World Wide Web", "World Wide Wire", "Web Wide World", "Wide World Web"],
+    ["Wie viele Bit hat ein Byte?", "8", "4", "16", "10"],
+    ["Welches Unternehmen stellt die PlayStation her?", "Sony", "Nintendo", "Microsoft", "Sega"],
+    ["Wie heißt der berühmte Klempner mit roter Mütze aus den Nintendo-Spielen?", "Mario", "Sonic", "Link", "Kirby"],
+    ["Wofür steht „CPU“?", "Central Processing Unit", "Computer Power Unit", "Central Program Utility", "Core Processing User"],
+    ["In welchem Jahr wurde das erste iPhone vorgestellt?", "2007", "2005", "2008", "2010"],
+    ["Welche Programmiersprache ist nach einer Comedy-Gruppe benannt?", "Python", "Java", "Ruby", "Perl"],
+    ["Wofür steht „USB“?", "Universal Serial Bus", "Unified System Bus", "Universal Signal Board", "User Serial Bridge"],
+    ["In welchem Spiel stapelt man fallende Blöcke aus vier Quadraten?", "Tetris", "Pac-Man", "Pong", "Snake"],
+    ["Welcher Dezimalzahl entspricht die Binärzahl 101?", "5", "3", "6", "9"]
+  ]
+}
