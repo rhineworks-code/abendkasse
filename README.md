@@ -2,27 +2,29 @@
 
 Jeden Tag gibt es neue Quizfragen. Um **20:00 Uhr** wird ausgezahlt: Jede richtige Antwort wird als Punkte auf dein Konto gebucht. Nach 7 Tagen endet die Woche, der Wochensieger bekommt einen Bonus und die nächste Woche startet automatisch.
 
-## Start
-
-Das Docker-Image wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut und unter `ghcr.io/rhineworks-code/abendkasse:latest` veröffentlicht.
+## Installation
 
 ```bash
 git clone https://github.com/rhineworks-code/abendkasse.git
 cd abendkasse
-docker login ghcr.io          # nur nötig, solange das Repo privat ist (Token mit read:packages)
-docker compose pull
-docker compose up -d
+cp .env.example .env       # Einstellungen anpassen (Port, PUBLIC_URL …)
+./update.sh
 ```
 
-**Update:**
+Danach läuft das Spiel unter `http://<server>:8020` (Port über `HOST_PORT` in `.env`). Daten (SQLite, Profilbilder) liegen in `./data`.
+
+## Update
 
 ```bash
-git pull && docker compose pull && docker compose up -d
+./update.sh
 ```
 
-Lokal bauen statt pullen: in der `docker-compose.yml` `image:` auskommentieren, `build: .` aktivieren und `docker compose up -d --build` ausführen.
+Das Skript sichert `data/` nach `backups/` (die letzten 5 bleiben), holt den neuen Stand von GitHub (`git pull`), lädt das neue Docker-Image, startet den Container neu und räumt alte Images auf.
+Das Image wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (`ghcr.io/rhineworks-code/abendkasse:latest`, amd64 + arm64).
 
-Danach läuft das Spiel unter `http://<server>:8020`. Daten (SQLite) liegen in `./data`.
+**Eigene Einstellungen gehören in `.env`**, nicht in die `docker-compose.yml`. `.env` wird von Git ignoriert und bei Updates nie überschrieben.
+
+Lokal bauen statt pullen: in der `docker-compose.yml` `image:` auskommentieren, `build: .` aktivieren und `docker compose up -d --build` ausführen.
 
 ## So funktioniert's
 
@@ -36,10 +38,11 @@ Danach läuft das Spiel unter `http://<server>:8020`. Daten (SQLite) liegen in `
 
 Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der Container um 20 Uhr nicht, wird die Auszahlung beim nächsten Start nachgeholt.
 
-## Einstellungen (docker-compose.yml)
+## Einstellungen (.env)
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
+| `HOST_PORT` | 8020 | Port auf dem Server |
 | `PAYOUT_HOUR` | 20 | Stunde der Auszahlung |
 | `OPEN_HOUR` | 0 | Ab dieser Stunde sind die Tagesfragen offen |
 | `QUESTIONS_PER_DAY` | 10 | Vorgabe für neue Spiele |

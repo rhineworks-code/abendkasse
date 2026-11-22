@@ -1,22 +1,26 @@
+# Einstellungen bitte NICHT hier, sondern in .env ändern (Vorlage: .env.example).
+# So bleiben sie bei ./update.sh erhalten.
 services:
   abendkasse:
     image: ghcr.io/rhineworks-code/abendkasse:latest
-    # build: .                  # stattdessen lokal bauen: Zeile oben auskommentieren, diese aktivieren
+    # build: .             # nur zum lokalen Selbstbauen statt Image
     container_name: abendkasse
     restart: unless-stopped
     ports:
-      - "8020:8084"         # Server-Port 8020 → Container-Port 8084
+      - "${HOST_PORT:-8020}:8084"
     volumes:
-      - ./data:/data            # Datenbank + eigene Fragen (data/questions/*.json)
+      - ./data:/data        # Datenbank, Profilbilder, eigene Fragen (data/questions/*.json)
     environment:
       GAME_TZ: Europe/Berlin
-      PAYOUT_HOUR: 20           # Auszahlung um 20:00
-      QUESTIONS_PER_DAY: 10     # Standard für neue Spiele
-      JOKERS_PER_DAY: 1         # 50:50-Joker pro Spieler und Tag
-      POINTS_PER_CORRECT: 10
-      PERFECT_DAY_BONUS: 20
-      WEEK_WIN_BONUS: 100
-      MAX_PLAYERS: 2
-      PUBLIC_URL: ""            # externe Adresse für Einladungslinks, z. B. https://quiz.deinedomain.de
-      ADMIN_TOKEN: ""           # setzen, um /api/admin/* zu nutzen
-      WEBHOOK_URL: ""           # optional, z. B. https://homeassistant.local:8123/api/webhook/abendkasse
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      PAYOUT_HOUR: ${PAYOUT_HOUR:-20}
+      OPEN_HOUR: ${OPEN_HOUR:-0}
+      WEEK_DAYS: ${WEEK_DAYS:-7}
+      QUESTIONS_PER_DAY: ${QUESTIONS_PER_DAY:-10}
+      JOKERS_PER_DAY: ${JOKERS_PER_DAY:-1}
+      POINTS_PER_CORRECT: ${POINTS_PER_CORRECT:-10}
+      PERFECT_DAY_BONUS: ${PERFECT_DAY_BONUS:-20}
+      WEEK_WIN_BONUS: ${WEEK_WIN_BONUS:-100}
+      MAX_PLAYERS: ${MAX_PLAYERS:-2}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
