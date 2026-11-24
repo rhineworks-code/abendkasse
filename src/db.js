@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS used_questions (
 // Migrationen für bestehende Datenbanken
 const cols = db.prepare('PRAGMA table_info(players)').all().map((c) => c.name);
 if (!cols.includes('avatar')) db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
+const gcols = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
+if (!gcols.includes('difficulty')) db.exec("ALTER TABLE games ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'mittel'");
 const dcols = db.prepare('PRAGMA table_info(days)').all().map((c) => c.name);
 // Tag wiederholen / streichen
 if (!dcols.includes('due_date')) db.exec('ALTER TABLE days ADD COLUMN due_date TEXT');        // Auszahlungstag (Nachholrunde: später als date)

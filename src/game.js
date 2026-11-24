@@ -22,6 +22,20 @@ function shuffle(arr) {
   return a;
 }
 
+// Schwierigkeitsstufen: welche Fragen-Level vorkommen und wie stark sie gewichtet werden
+const DIFFICULTIES = {
+  leicht: { 1: 1 },
+  mittel: { 1: 1, 2: 1 },
+  schwer: { 2: 1, 3: 3 },
+  gemischt: { 1: 1, 2: 1, 3: 1 },
+};
+const normDifficulty = (d) => (DIFFICULTIES[d] ? d : 'mittel');
+
+// Zufällige Reihenfolge mit Gewichten (Efraimidis-Spirakis)
+function weightedOrder(list, weightOf) {
+  return list.map((x) => ({ x, k: Math.random() ** (1 / weightOf(x)) })).sort((a, b) => b.k - a.k).map((e) => e.x);
+}
+
 const isAfterPayout = (n) => n.hour >= cfg.PAYOUT_HOUR;
 // Erster Spieltag: heute, oder morgen wenn die Auszahlung für heute schon durch ist
 const freshStart = (n) => (isAfterPayout(n) ? T.addDays(n.date, 1) : n.date);
@@ -72,19 +86,20 @@ function removeAvatarFile(file) {
 
 // ---------- Spiele ----------
 
-function createGame(owner, { name, genres, mode, perDay }) {
+function createGame(owner, { name, genres, mode, perDay, difficulty }) {
   const known = new Set(Q.genres().map((g) => g.name));
   genres = (genres || []).filter((g) => known.has(g));
   if (!genres.length) genres = [...known];
   mode = mode === 'daily' ? 'daily' : 'mix';
   perDay = Math.min(Math.max(parseInt(perDay, 10) || cfg.QUESTIONS_PER_DAY, 1), 20);
+  difficulty = normDifficulty(difficulty);
 
   let code;
   do code = randomCode(); while (db.prepare('SELECT 1 FROM games WHERE code = ?').get(code));
 
   return tx(() => {
-    const r = db.prepare(`INSERT INTO games (code, name, owner_id, genres, mode, per_day, week_start)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(code, name, owner.id, JSON.stringify(genres), mode, perDay, freshStart(T.now()));
+    const r = db.prepare(`INSERT INTO games (code, name, owner_id, genres, mode, per_day, week_start, difficulty)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(code, name, owner.id, JSON.stringify(genres), mode, perDay, freshStart(T.now()), difficulty);
     db.prepare('INSERT INTO game_players (game_id, player_id) VALUES (?, ?)').run(r.lastInsertRowid, owner.id);
     return getGame(code);
   });
@@ -114,8 +129,17 @@ function joinGame(code, player) {
   return g;
 }
 
+// Einstellungen eines laufenden Spiels ändern (gilt ab der nächsten neuen Runde)
+function updateSettings(game, { difficulty }) {
+  if (difficulty !== undefined) {
+    if (!DIFFICULTIES[difficulty]) throw httpError(400, 'Unbekannte Schwierigkeit.');
+    db.prepare('UPDATE games SET difficulty = ? WHERE id = ?').run(difficulty, game.id);
+  }
+  return { ok: true, difficulty: getGame(game.code).difficulty };
+}
+
 const gamesOfPlayer = (playerId) => db.prepare(`
-  SELECT g.code, g.name, g.week_no, g.week_start,
+  SELECT g.code, g.name, g.week_no, g.week_start, g.difficulty,
     (SELECT COUNT(*) FROM game_players x WHERE x.game_id = g.id) AS players,
     COALESCE((SELECT SUM(amount) FROM ledger l WHERE l.game_id = g.id AND l.player_id = ?), 0) AS balance
   FROM games g JOIN game_players gp ON gp.game_id = g.id
@@ -131,7 +155,11 @@ function dayGenre(game, date) {
 
 function pickQuestions(game, genre) {
   const allowed = genre ? [genre] : game.genres;
-  const inGenres = Q.all().filter((q) => allowed.includes(q.genre));
+  const weights = DIFFICULTIES[normDifficulty(game.difficulty)];
+  let inGenres = Q.all().filter((q) => allowed.includes(q.genre) && weights[q.level]);
+  // Zu wenige Fragen dieser Stufe -> auf alle Stufen ausweichen
+  if (inGenres.length < game.per_day) inGenres = Q.all().filter((q) => allowed.includes(q.genre));
+  const weightOf = (q) => weights[q.level] || 0.2;
   const used = new Set(db.prepare('SELECT qid FROM used_questions WHERE game_id = ?').all(game.id).map((r) => r.qid));
   let pool = inGenres.filter((q) => !used.has(q.id));
 
@@ -145,16 +173,17 @@ function pickQuestions(game, genre) {
   let picked;
   if (!genre && allowed.length > 1) {
     const byGenre = {};
-    shuffle(pool).forEach((q) => (byGenre[q.genre] = byGenre[q.genre] || []).push(q));
+    weightedOrder(pool, weightOf).forEach((q) => (byGenre[q.genre] = byGenre[q.genre] || []).push(q));
     const order = shuffle(Object.keys(byGenre));
     picked = [];
     while (picked.length < game.per_day && order.some((g) => byGenre[g].length)) {
-      for (const g of order) if (byGenre[g].length && picked.length < game.per_day) picked.push(byGenre[g].pop());
+      for (const g of order) if (byGenre[g].length && picked.length < game.per_day) picked.push(byGenre[g].shift());
     }
   } else {
-    picked = shuffle(pool).slice(0, game.per_day);
+    picked = weightedOrder(pool, weightOf).slice(0, game.per_day);
   }
-  return picked;
+  // Innerhalb des Tages von leicht nach schwer
+  return picked.map((q, i) => ({ q, i })).sort((a, b) => a.q.level - b.q.level || a.i - b.i).map((e) => e.q);
 }
 
 function newQuestions(game, date) {
@@ -162,7 +191,7 @@ function newQuestions(game, date) {
   if (genre && Q.all().filter((q) => q.genre === genre).length < game.per_day) genre = null;
   const questions = pickQuestions(game, genre).map((q) => {
     const options = shuffle([q.correct, ...q.wrong]);
-    return { id: q.id, genre: q.genre, q: q.q, options, answer: options.indexOf(q.correct) };
+    return { id: q.id, genre: q.genre, level: q.level, q: q.q, options, answer: options.indexOf(q.correct) };
   });
   const ins = db.prepare('INSERT OR IGNORE INTO used_questions (game_id, qid) VALUES (?, ?)');
   questions.forEach((q) => ins.run(game.id, q.id));
@@ -488,6 +517,7 @@ function overview(game, me) {
 
   return {
     code: game.code, name: game.name, genres: game.genres, mode: game.mode, perDay: game.per_day,
+    difficulty: normDifficulty(game.difficulty),
     isOwner: game.owner_id === me.id, maxPlayers: cfg.MAX_PLAYERS, publicUrl: cfg.PUBLIC_URL,
     week: { no: game.week_no, start: game.week_start, end: weekEnd, length: cfg.WEEK_DAYS,
       day: n.date < game.week_start ? 0 : T.diffDays(game.week_start, n.date) + 1 },
@@ -514,7 +544,7 @@ function dayView(game, me, date, st) {
   const view = {
     ...base, genre: day.genre, week: day.week_no,
     questions: day.questions.map((q, i) => ({
-      q: q.q, genre: q.genre, options: q.options,
+      q: q.q, genre: q.genre, level: q.level || 2, options: q.options,
       ...(reveal ? { answer: q.answer } : {}),
       mine: mine[i] ?? null,
       removed: myJokers.find((j) => j.idx === i)?.removed || [],
@@ -556,6 +586,6 @@ function notify(payload) {
 
 module.exports = {
   createPlayer, playerByToken, createGame, getGame, joinGame, isMember, gamesOfPlayer,
-  renamePlayer, setAvatar, clearAvatar, AVATAR_DIR, useJoker, requestDayAction, answerDayRequest,
+  updateSettings, renamePlayer, setAvatar, clearAvatar, AVATAR_DIR, useJoker, requestDayAction, answerDayRequest,
   todayState, answer, tick, overview, dayView, ledgerOf, httpError,
 };

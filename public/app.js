@@ -14,6 +14,26 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtDate = (d) => { const t = new Date(d + 'T12:00:00Z'); return `${WD[t.getUTCDay()]}, ${t.getUTCDate()}.${t.getUTCMonth() + 1}.`; };
   const sign = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const DIFF = {
+    leicht: { label: 'Leicht', hint: 'Nur leichte Fragen – entspannt für jeden Tag.' },
+    mittel: { label: 'Mittel', hint: 'Leichte und mittlere Fragen, keine richtig schweren.' },
+    schwer: { label: 'Schwer', hint: 'Vor allem schwere Fragen, dazu mittlere.' },
+    gemischt: { label: 'Gemischt', hint: 'Alle Stufen – jeder Tag geht von leicht nach schwer.' },
+  };
+  const LEVEL = { 1: 'leicht', 2: 'mittel', 3: 'schwer' };
+  const levelBadge = (l) => `<span class="lvl l${l}" title="${LEVEL[l]}">${'●'.repeat(l)}${'○'.repeat(3 - l)}</span>`;
+  function diffSeg(id, current) {
+    return `<div class="seg" id="${id}">${Object.entries(DIFF).map(([k, v]) =>
+      `<button type="button" data-d="${k}" class="${k === current ? 'on' : ''}">${v.label}</button>`).join('')}</div>
+      <p class="small muted" id="${id}-hint" style="margin:6px 0 0">${DIFF[current].hint}</p>`;
+  }
+  function bindDiffSeg(id, onPick) {
+    document.querySelectorAll(`#${id} button`).forEach((b) => (b.onclick = () => {
+      document.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle('on', x === b));
+      document.getElementById(`${id}-hint`).textContent = DIFF[b.dataset.d].hint;
+      onPick(b.dataset.d);
+    }));
+  }
   const HUES = [210, 330, 30, 150, 270, 0, 190, 90];
   function avatar(p, size = 36) {
     const st = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px`;
@@ -202,6 +222,8 @@
     const genres = await api('/genres');
     const sel = new Set(genres.map((g) => g.name));
     let mode = 'mix';
+    let difficulty = 'mittel';
+    const lv = genres.reduce((a, g) => { [1, 2, 3].forEach((l) => (a[l] += g.levels?.[l] || 0)); return a; }, { 1: 0, 2: 0, 3: 0 });
 
     $app.innerHTML = `
       <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
@@ -210,7 +232,7 @@
         ${me.games.length ? me.games.map((g) => `
           <a class="card" href="#/g/${g.code}">
             <div class="spread"><b>${esc(g.name)}</b><span class="pts">${g.balance} P</span></div>
-            <div class="row small muted" style="margin-top:6px"><span class="pill">${g.code}</span> Woche ${g.week_no} · ${g.players} Spieler</div>
+            <div class="row small muted" style="margin-top:6px"><span class="pill">${g.code}</span> <span class="pill">${DIFF[g.difficulty]?.label || 'Mittel'}</span> Woche ${g.week_no} · ${g.players} Spieler</div>
           </a>`).join('') : '<p class="muted">Noch keine Spiele – leg eins an oder tritt mit einem Code bei.</p>'}
       </div>
 
@@ -233,6 +255,8 @@
           <button type="button" data-m="mix" class="on">Bunt gemischt</button>
           <button type="button" data-m="daily">Ein Genre pro Tag</button>
         </div>
+        <label class="lbl">Schwierigkeit <span class="muted">(${lv[1]} leicht · ${lv[2]} mittel · ${lv[3]} schwer)</span></label>
+        ${diffSeg('diff', difficulty)}
         <label class="lbl">Fragen pro Tag</label>
         <select name="perDay">${[5, 10, 15, 20].map((n) => `<option ${n === 10 ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <button class="btn block" style="margin-top:16px">Spiel erstellen</button>
@@ -247,6 +271,7 @@
       mode = b.dataset.m;
       document.querySelectorAll('#mode button').forEach((x) => x.classList.toggle('on', x === b));
     }));
+    bindDiffSeg('diff', (d) => (difficulty = d));
     document.getElementById('join').onsubmit = async (ev) => {
       ev.preventDefault();
       try { const r = await api('/games/join', { method: 'POST', body: { code: ev.target.code.value } }); location.hash = `#/g/${r.code}`; }
@@ -255,7 +280,7 @@
     document.getElementById('new').onsubmit = async (ev) => {
       ev.preventDefault();
       try {
-        const r = await api('/games', { method: 'POST', body: { name: ev.target.name.value, genres: [...sel], mode, perDay: +ev.target.perDay.value } });
+        const r = await api('/games', { method: 'POST', body: { name: ev.target.name.value, genres: [...sel], mode, difficulty, perDay: +ev.target.perDay.value } });
         sessionStorage.setItem('ak_new', r.code);
         location.hash = `#/g/${r.code}`;
       } catch (e) { toast(e.message, true); }
@@ -502,7 +527,7 @@
     $tab.innerHTML = `${head}
       <div class="card">
         <div class="dots">${d.questions.map((x, i) => `<i class="${x.mine !== null ? 'a' : i === next ? 'c' : ''}"></i>`).join('')}</div>
-        <div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)}</span></div>
+        <div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>
         <div class="qtext">${esc(q.q)}</div>
         <div class="opts">
           ${q.options.map((o, i) => q.removed.includes(i)
@@ -564,7 +589,7 @@
         const my = mine ? mine.answers[i] : undefined;
         return `
         <div class="card">
-          <div class="qhead"><span>Frage ${i + 1} ${d.results.filter((r) => r.jokers.includes(i)).map((r) => `<span class="mk ${r.me ? 'me' : 'fr'}">50:50 ${r.me ? 'du' : esc(r.name)}</span>`).join(' ')}</span><span>${esc(q.genre)}</span></div>
+          <div class="qhead"><span>Frage ${i + 1} ${d.results.filter((r) => r.jokers.includes(i)).map((r) => `<span class="mk ${r.me ? 'me' : 'fr'}">50:50 ${r.me ? 'du' : esc(r.name)}</span>`).join(' ')}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>
           <div class="qtext">${esc(q.q)}</div>
           <div class="opts">
             ${q.options.map((o, oi) => {
@@ -618,6 +643,12 @@
         }).join('')}
       </div>
 
+      <div class="card">
+        <h2 style="margin-top:0">Schwierigkeit</h2>
+        ${diffSeg('gdiff', g.difficulty)}
+        <p class="small muted" style="margin:8px 0 0">Gilt ab der nächsten neuen Runde – bereits gestellte Fragen bleiben.</p>
+      </div>
+
       <div class="card small muted">
         <b style="color:var(--text)">Regeln:</b> ${g.rules.perCorrect} P pro richtige Antwort · +${g.rules.perfectBonus} P für einen perfekten Tag ·
         +${g.rules.weekBonus} P für den Wochensieg · ein 50:50-Joker pro Tag · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
@@ -632,6 +663,10 @@
         <span class="muted small">(${Object.entries(w.scores).map(([id, s]) => `${esc(byId[id]?.name || '?')} ${s}`).join(' : ')})</span></span></div>`).join('')}</div>`
         : '<p class="muted">Noch keine abgeschlossene Woche.</p>'}`;
 
+    bindDiffSeg('gdiff', async (d) => {
+      try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { difficulty: d } }); g.difficulty = d; toast(`Schwierigkeit: ${DIFF[d].label} – ab der nächsten Runde`); }
+      catch (e) { toast(e.message, true); }
+    });
     $tab.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () =>
       openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act))));
   }

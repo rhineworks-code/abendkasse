@@ -92,7 +92,7 @@ app.delete('/api/me/avatar', auth, wrap((req) => { G.clearAvatar(req.player); re
 
 app.post('/api/games', auth, wrap((req) => {
   const name = cleanName(req.body.name, 40) || `${req.player.name}s Quiz`;
-  const g = G.createGame(req.player, { name, genres: req.body.genres, mode: req.body.mode, perDay: req.body.perDay });
+  const g = G.createGame(req.player, { name, genres: req.body.genres, mode: req.body.mode, perDay: req.body.perDay, difficulty: req.body.difficulty });
   return { code: g.code };
 }));
 
@@ -128,6 +128,8 @@ app.get('/api/games/:code/days/:date', auth, member, wrap((req) => {
   if (v.state !== 'paid' && v.state !== 'open') throw G.httpError(403, `Die Auflösung gibt es erst um ${cfg.PAYOUT_HOUR}:00 Uhr.`);
   return v;
 }));
+
+app.put('/api/games/:code/settings', auth, member, wrap((req) => G.updateSettings(req.game, { difficulty: req.body.difficulty })));
 
 app.get('/api/games/:code/ledger', auth, member, wrap((req) => G.ledgerOf(req.game.id, req.player.id)));
 

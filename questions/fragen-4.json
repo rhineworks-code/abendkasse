@@ -1,0 +1,90 @@
+{
+  "Allgemeinwissen": [
+    ["Wie viele Schnittpunkte hat ein normales Go-Brett (19 × 19 Linien)?", "361", "324", "400", "289", 3],
+    ["Wie nennt man die Lehre von Fahnen und Flaggen?", "Vexillologie", "Heraldik", "Numismatik", "Philatelie", 3],
+    ["Was sammelt ein Numismatiker?", "Münzen", "Briefmarken", "Bierdeckel", "Postkarten", 2],
+    ["Wie viele Kanten hat ein Würfel?", "12", "8", "6", "10", 2],
+    ["Welche Sprache hat weltweit die meisten Muttersprachler?", "Mandarin-Chinesisch", "Englisch", "Spanisch", "Hindi", 2],
+    ["Wie nennt man ein Gedicht aus 14 Zeilen?", "Sonett", "Haiku", "Limerick", "Ode", 3],
+    ["Welcher Wochentag ist nach dem germanischen Gott Donar benannt?", "Donnerstag", "Dienstag", "Freitag", "Mittwoch", 2],
+    ["Wie viele Stunden Zeitunterschied liegen im Winter zwischen Berlin und New York?", "6", "5", "7", "9", 3],
+    ["Was bedeutet „carpe diem“?", "Nutze den Tag", "Ich kam, sah und siegte", "Im Wein liegt Wahrheit", "Der Würfel ist gefallen", 2]
+  ],
+  "Geografie": [
+    ["Was ist die Hauptstadt von Kasachstan?", "Astana", "Almaty", "Taschkent", "Bischkek", 3],
+    ["Welcher ist der tiefste See der Erde?", "Baikalsee", "Tanganjikasee", "Kaspisches Meer", "Oberer See", 3],
+    ["Was ist die Hauptstadt von Myanmar?", "Naypyidaw", "Rangun", "Mandalay", "Bangkok", 3],
+    ["Welches Land hat dank seiner Überseegebiete die meisten Zeitzonen?", "Frankreich", "Russland", "USA", "Vereinigtes Königreich", 3],
+    ["Welcher Fluss mündet bei Cuxhaven in die Nordsee?", "Elbe", "Weser", "Ems", "Eider", 3],
+    ["Welches Land Afrikas hat die meisten Einwohner?", "Nigeria", "Äthiopien", "Ägypten", "Südafrika", 3],
+    ["Welches Land ist der einzige Nachbar von Lesotho?", "Südafrika", "Namibia", "Botswana", "Eswatini", 3],
+    ["In welchem Land liegt der größte Teil der Atacama-Wüste?", "Chile", "Peru", "Argentinien", "Bolivien", 3],
+    ["Welche Stadt liegt auf zwei Kontinenten?", "Istanbul", "Kairo", "Moskau", "Athen", 2]
+  ],
+  "Geschichte": [
+    ["In welchem Jahr fand die Varusschlacht im Teutoburger Wald statt?", "9 n. Chr.", "44 v. Chr.", "117 n. Chr.", "476 n. Chr.", 3],
+    ["Wer war der erste römische Kaiser?", "Augustus", "Julius Caesar", "Nero", "Tiberius", 3],
+    ["In welchem Jahr endete traditionell das Weströmische Reich?", "476", "410", "1453", "800", 3],
+    ["Welcher Vertrag von 1919 regelte das Kriegsende mit Deutschland nach dem Ersten Weltkrieg?", "Versailler Vertrag", "Westfälischer Friede", "Vertrag von Lissabon", "Wiener Kongress", 2],
+    ["Wer war Präsident der USA während des Amerikanischen Bürgerkriegs?", "Abraham Lincoln", "Ulysses S. Grant", "Andrew Johnson", "George Washington", 2],
+    ["In welchem Jahr wurde die Bundesrepublik Deutschland gegründet?", "1949", "1945", "1950", "1955", 2],
+    ["Welche Seuche verbreitete sich ab 1347 in Europa?", "Pest", "Cholera", "Pocken", "Spanische Grippe", 2],
+    ["Wer gilt als erster Kaiser Chinas?", "Qin Shihuangdi", "Kublai Khan", "Puyi", "Konfuzius", 3],
+    ["In welchem Jahr wurde die Magna Carta besiegelt?", "1215", "1066", "1415", "1492", 3]
+  ],
+  "Wissenschaft": [
+    ["Welches Element hat das chemische Symbol W?", "Wolfram", "Wasserstoff", "Wismut", "Vanadium", 3],
+    ["Welches Element hat das chemische Symbol K?", "Kalium", "Kalzium", "Krypton", "Kohlenstoff", 3],
+    ["Wie heißt die Einheit der Frequenz?", "Hertz", "Newton", "Pascal", "Joule", 2],
+    ["Welcher Planet ist so stark geneigt, dass er „auf der Seite liegt“?", "Uranus", "Neptun", "Venus", "Saturn", 3],
+    ["Auf welchem Planeten dauert ein Tag länger als ein Jahr?", "Venus", "Merkur", "Mars", "Uranus", 3],
+    ["Welcher ist der kleinste Knochen im menschlichen Körper?", "Steigbügel", "Hammer", "Amboss", "Elle", 3],
+    ["Welchen Wert hat die Avogadro-Konstante ungefähr (pro Mol)?", "6,022 × 10²³", "3,0 × 10⁸", "9,81", "1,6 × 10⁻¹⁹", 3],
+    ["Wer stellte 1869 das Periodensystem der Elemente vor?", "Dmitri Mendelejew", "Antoine Lavoisier", "John Dalton", "Niels Bohr", 3],
+    ["Wie heißt der Mittelpunkt eines Atoms?", "Atomkern", "Elektron", "Molekül", "Orbital", 2]
+  ],
+  "Natur & Tiere": [
+    ["Welches Tier hat den stärksten gemessenen Biss?", "Salzwasserkrokodil", "Weißer Hai", "Flusspferd", "Löwe", 3],
+    ["Wie viele Magenabschnitte hat eine Kuh?", "4", "2", "3", "1", 2],
+    ["Welches Wirbeltier wird nach heutigem Wissen am ältesten?", "Grönlandhai", "Galápagos-Riesenschildkröte", "Grönlandwal", "Koi-Karpfen", 3],
+    ["Wie heißt die Wissenschaft von den Vögeln?", "Ornithologie", "Entomologie", "Herpetologie", "Ichthyologie", 2],
+    ["Wie heißt die Wissenschaft von den Insekten?", "Entomologie", "Ornithologie", "Mykologie", "Botanik", 3],
+    ["Welches dieser Tiere hat blaues Blut?", "Oktopus", "Hai", "Delfin", "Frosch", 3],
+    ["Was ist ein Axolotl?", "Ein Schwanzlurch", "Ein Fisch", "Eine Echse", "Ein Insekt", 3],
+    ["Welche Baumart erreicht das höchste bekannte Alter?", "Langlebige Kiefer", "Eiche", "Riesenmammutbaum", "Linde", 3],
+    ["Wie viele Augen hat eine Honigbiene insgesamt?", "5", "2", "3", "8", 3]
+  ],
+  "Sport": [
+    ["Wie viele Spieler hat eine Rugby-Union-Mannschaft auf dem Feld?", "15", "13", "11", "12", 3],
+    ["Wie viele Spieler hat eine Cricket-Mannschaft auf dem Feld?", "11", "9", "12", "15", 3],
+    ["Welches ist das höchstmögliche reguläre Break im Snooker?", "147", "155", "180", "100", 3],
+    ["Wie viele Punkte sind mit drei Darts maximal möglich?", "180", "170", "150", "200", 2],
+    ["In welcher Stadt fanden 1972 die Olympischen Sommerspiele statt?", "München", "Berlin", "Montreal", "Moskau", 2],
+    ["Wie lang ist ein olympisches Schwimmbecken?", "50 Meter", "25 Meter", "100 Meter", "33 Meter", 2],
+    ["Wer gewann 2013 das Champions-League-Finale im Wembley-Stadion?", "FC Bayern München", "Borussia Dortmund", "Real Madrid", "FC Barcelona", 3],
+    ["In welcher Höhe hängt ein Basketballkorb?", "3,05 m", "2,85 m", "3,25 m", "2,95 m", 3],
+    ["Wie viele Spieler stehen bei einem Wasserball-Team im Wasser (inkl. Torwart)?", "7", "6", "8", "11", 3]
+  ],
+  "Film & Musik": [
+    ["Wer komponierte „Der Ring des Nibelungen“?", "Richard Wagner", "Richard Strauss", "Giuseppe Verdi", "Carl Maria von Weber", 3],
+    ["Wie viele Sinfonien hat Beethoven vollendet?", "9", "7", "12", "5", 3],
+    ["Welcher Film gewann 1995 den Oscar als bester Film?", "Forrest Gump", "Pulp Fiction", "Die Verurteilten", "Braveheart", 3],
+    ["Wer führte Regie bei „Das Boot“ (1981)?", "Wolfgang Petersen", "Werner Herzog", "Rainer Werner Fassbinder", "Wim Wenders", 3],
+    ["Aus welchem Land stammt die Band U2?", "Irland", "England", "Schottland", "USA", 2],
+    ["Wer komponierte die Musik zu „Star Wars“?", "John Williams", "Hans Zimmer", "Ennio Morricone", "Howard Shore", 2],
+    ["Wie hieß Disneys erster abendfüllender Zeichentrickfilm (1937)?", "Schneewittchen und die sieben Zwerge", "Pinocchio", "Bambi", "Dumbo", 3],
+    ["Wer komponierte den „Boléro“?", "Maurice Ravel", "Claude Debussy", "Erik Satie", "Camille Saint-Saëns", 3],
+    ["Welcher deutsche Komponist schrieb die Filmmusik zu „Gladiator“?", "Hans Zimmer", "Harold Faltermeyer", "James Horner", "Danny Elfman", 3]
+  ],
+  "Technik & Games": [
+    ["Wie viele Bytes hat ein Kibibyte (KiB)?", "1024", "1000", "512", "2048", 3],
+    ["Welches Studio entwickelte „The Witcher 3“?", "CD Projekt Red", "Ubisoft", "BioWare", "Bethesda", 3],
+    ["Welcher grafische Webbrowser machte das Web 1993 populär?", "Mosaic", "Netscape Navigator", "Opera", "Internet Explorer", 3],
+    ["Wofür steht „GPU“?", "Graphics Processing Unit", "General Processing Unit", "Graphic Power Unit", "Global Processing Unit", 2],
+    ["Welcher Port ist der Standard für HTTPS?", "443", "80", "22", "8080", 3],
+    ["Welcher Port ist der Standard für SSH?", "22", "21", "23", "25", 3],
+    ["Wer gilt als erste Programmiererin der Geschichte?", "Ada Lovelace", "Grace Hopper", "Margaret Hamilton", "Hedy Lamarr", 3],
+    ["Welche Firma entwickelte die Programmiersprache Java?", "Sun Microsystems", "Oracle", "Microsoft", "IBM", 3],
+    ["Welche Nintendo-Konsole erschien 1986 in Europa?", "NES", "SNES", "Game Boy", "Nintendo 64", 3]
+  ]
+}

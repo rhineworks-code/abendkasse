@@ -34,6 +34,14 @@ Lokal bauen statt pullen: in der `docker-compose.yml` `image:` auskommentieren, 
 4. Um 20:00 Uhr kommt die Auflösung: Du siehst, wer was getippt hat, und die Punkte werden gebucht.
 5. Nach Tag 7 wird die Woche abgeschlossen. Der Sieger bekommt den Wochenbonus, bei Gleichstand beide.
 
+**Schwierigkeit:** Jede Frage hat eine Stufe (●○○ leicht, ●●○ mittel, ●●● schwer). Pro Spiel wählst du:
+- **Leicht:** nur leichte Fragen
+- **Mittel** (Standard): leichte und mittlere Fragen, keine schweren
+- **Schwer:** vor allem schwere, dazu mittlere Fragen
+- **Gemischt:** alle Stufen
+
+Innerhalb eines Tages geht es immer von leicht nach schwer. Ändern kann man die Stufe jederzeit unter **Woche → Schwierigkeit**. Sie gilt ab der nächsten neuen Runde. Gibt es in den gewählten Genres zu wenige Fragen einer Stufe, werden automatisch auch andere Stufen genommen.
+
 **Tag wiederholen oder streichen:** Ist der Server ausgefallen oder konnte jemand nicht mitspielen, tippt man in der Wochenansicht bei einem vergangenen Tag der laufenden Woche auf **↻**:
 - **Tag wiederholen:** Die Punkte des Tages werden zurückgebucht (Storno im Konto). Ihr bekommt neue Fragen als **Nachholrunde**, spielbar bis zur nächsten Auszahlung um 20 Uhr, zusätzlich zur normalen Tagesrunde. Das geht auch für Tage, an denen gar nicht gespielt wurde.
 - **Tag streichen:** Die Punkte des Tages werden für alle zurückgebucht, der Tag zählt nicht.
@@ -63,15 +71,15 @@ Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der C
 
 ## Eigene Fragen
 
-Lege JSON-Dateien in `./data/questions/` ab. Die richtige Antwort steht immer an **zweiter** Stelle. Gemischt wird automatisch.
+Lege JSON-Dateien in `./data/questions/` ab. Die richtige Antwort steht immer an **zweiter** Stelle. Gemischt wird automatisch. Die Zahl am Ende ist die Schwierigkeit (1 = leicht, 2 = mittel, 3 = schwer). Sie ist optional, ohne Zahl gilt „mittel“.
 
 ```json
 {
   "Filme": [
-    ["Wer spielte Neo in Matrix?", "Keanu Reeves", "Tom Cruise", "Brad Pitt", "Will Smith"]
+    ["Wer spielte Neo in Matrix?", "Keanu Reeves", "Tom Cruise", "Brad Pitt", "Will Smith", 2]
   ],
   "Unsere Insider": [
-    ["Wo waren wir 2019 im Urlaub?", "Kroatien", "Italien", "Spanien", "Portugal"]
+    ["Wo waren wir 2019 im Urlaub?", "Kroatien", "Italien", "Spanien", "Portugal", 1]
   ]
 }
 ```
@@ -104,6 +112,6 @@ Node.js 22 (eingebautes `node:sqlite`, keine nativen Abhängigkeiten) · Express
 src/server.js     API + statische Dateien + Minuten-Takt
 src/game.js       Wochen, Tagesrunden, Auszahlung, Konto
 src/questions.js  Fragenkatalog laden
-questions/        mitgelieferte Fragen (386 in 8 Genres)
+questions/        mitgelieferte Fragen (458 in 8 Genres, mit Schwierigkeit)
 public/           Frontend
 ```

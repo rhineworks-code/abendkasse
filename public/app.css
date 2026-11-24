@@ -225,3 +225,10 @@ label.lbl { display: block; font-size: .85rem; color: var(--muted); margin: 12px
 .choice:hover { border-color: var(--gold); }
 .choice b { display: block; margin-bottom: 4px; }
 .choice span { color: var(--muted); font-size: .88rem; }
+
+/* Schwierigkeit */
+.lvl { font-size: .7rem; letter-spacing: 1px; margin-left: 6px; vertical-align: 1px; }
+.lvl.l1 { color: var(--ok); }
+.lvl.l2 { color: var(--gold); }
+.lvl.l3 { color: var(--bad); }
+.seg button { font-size: .9rem; padding: 9px 4px; }
