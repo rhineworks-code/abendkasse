@@ -109,17 +109,23 @@ app.get('/api/games/:code/today', auth, member, wrap((req) => {
 }));
 
 app.post('/api/games/:code/answer', auth, member, wrap((req) => {
-  const mine = G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice));
+  const mine = G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice), req.body.date);
   return { ok: true, answered: Object.keys(mine).length };
 }));
 
-app.post('/api/games/:code/joker', auth, member, wrap((req) => G.useJoker(req.game, req.player, Number(req.body.idx))));
+app.post('/api/games/:code/joker', auth, member, wrap((req) => G.useJoker(req.game, req.player, Number(req.body.idx), req.body.date)));
+
+// Tag wiederholen / streichen: Anfrage stellen, zustimmen oder ablehnen
+app.post('/api/games/:code/days/:date/request', auth, member, wrap((req) =>
+  G.requestDayAction(req.game, req.player, req.params.date, String(req.body.type || ''))));
+app.post('/api/games/:code/days/:date/answer', auth, member, wrap((req) =>
+  G.answerDayRequest(req.game, req.player, req.params.date, !!req.body.accept)));
 
 app.get('/api/games/:code/days/:date', auth, member, wrap((req) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) throw G.httpError(400, 'Ungültiges Datum.');
   const v = G.dayView(req.game, req.player, req.params.date);
   if (v.state === 'none') throw G.httpError(404, 'An diesem Tag gab es keine Runde.');
-  if (v.state !== 'paid') throw G.httpError(403, `Die Auflösung gibt es erst um ${cfg.PAYOUT_HOUR}:00 Uhr.`);
+  if (v.state !== 'paid' && v.state !== 'open') throw G.httpError(403, `Die Auflösung gibt es erst um ${cfg.PAYOUT_HOUR}:00 Uhr.`);
   return v;
 }));
 

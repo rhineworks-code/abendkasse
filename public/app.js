@@ -301,6 +301,8 @@
         ${g.players.length < g.maxPlayers ? `<div class="player"><div class="nm muted">Wartet auf Mitspieler …</div><div class="small muted" style="margin:4px 0 8px">Code <b>${g.code}</b></div><button class="btn small" data-invite>Jetzt einladen</button></div>` : ''}
       </div>
 
+      ${notices(g)}
+
       <nav class="tabs">
         <a href="#/g/${code}" class="${tab === 'heute' ? 'on' : ''}">Heute</a>
         <a href="#/g/${code}/woche" class="${tab === 'woche' || tab === 'tag' ? 'on' : ''}">Woche</a>
@@ -309,6 +311,7 @@
       <section id="tab"><div class="loading">Lädt …</div></section>`;
 
     document.querySelectorAll('[data-invite]').forEach((b) => (b.onclick = () => openInvite(g)));
+    bindNotices(g);
     // Direkt nach dem Erstellen: Einladen anbieten
     if (sessionStorage.getItem('ak_new') === g.code) { sessionStorage.removeItem('ak_new'); openInvite(g); }
 
@@ -317,6 +320,80 @@
     if (tab === 'konto') return tabLedger($tab, g);
     if (tab === 'tag' && arg) return tabDay($tab, g, arg);
     return tabToday($tab, g);
+  }
+
+  // ----- Tag wiederholen / streichen -----
+  const hhOf = (g) => String(g.rules.payoutHour).padStart(2, '0') + ':00';
+  const dueText = (g, due) => `bis ${due === g.today ? 'heute' : fmtDate(due)} ${hhOf(g)} Uhr`;
+
+  function notices(g) {
+    const out = [];
+    for (const r of g.requests) {
+      const what = r.type === 'void' ? 'streichen' : 'wiederholen';
+      if (r.needMe) {
+        out.push(`<div class="notice">
+          <div><b>${esc(r.byName)}</b> möchte den Tag <b>${fmtDate(r.date)}</b> ${what}.
+          <div class="small muted">${r.type === 'void' ? 'Die Punkte des Tages werden für alle zurückgebucht, der Tag zählt nicht.' : `Die Punkte des Tages werden zurückgebucht und ihr spielt eine Nachholrunde mit neuen Fragen.`}</div></div>
+          <div class="row"><button class="btn small" data-req="${r.date}" data-ok="1">Zustimmen</button><button class="btn ghost small" data-req="${r.date}" data-ok="0">Ablehnen</button></div>
+        </div>`);
+      } else {
+        out.push(`<div class="notice muted-n">
+          <div>Anfrage: Tag <b>${fmtDate(r.date)}</b> ${what}. <span class="small muted">Wartet auf ${r.waitingFor.map(esc).join(', ')}.</span></div>
+          ${r.mine ? `<button class="btn ghost small" data-req="${r.date}" data-ok="0">Zurückziehen</button>` : ''}
+        </div>`);
+      }
+    }
+    for (const d of g.days.filter((x) => x.replayOpen)) {
+      out.push(`<div class="notice replay">
+        <div>🔁 <b>Nachholrunde</b> für ${fmtDate(d.date)} ist offen <span class="small muted">– ${dueText(g, d.due)}</span></div>
+        <a class="btn small" href="#/g/${g.code}/tag/${d.date}">Jetzt spielen</a>
+      </div>`);
+    }
+    return out.join('');
+  }
+
+  function bindNotices(g) {
+    document.querySelectorAll('[data-req]').forEach((b) => (b.onclick = async () => {
+      const accept = b.dataset.ok === '1';
+      try {
+        const r = await api(`/games/${g.code}/days/${b.dataset.req}/answer`, { method: 'POST', body: { accept } });
+        toast(r.status === 'replay' ? 'Nachholrunde ist offen!' : r.status === 'voided' ? 'Tag gestrichen' : r.status === 'rejected' ? 'Anfrage abgelehnt' : 'Zugestimmt');
+        route();
+      } catch (e) { toast(e.message, true); }
+    }));
+  }
+
+  function openDayAction(g, date, d) {
+    const others = g.players.filter((p) => !p.me).map((p) => p.name);
+    const dueNote = g.afterPayout ? 'bis morgen ' + hhOf(g) + ' Uhr' : 'bis heute ' + hhOf(g) + ' Uhr';
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `
+      <div class="sheet" role="dialog" aria-label="Tag ändern">
+        <div class="spread"><h2 style="margin:0">${fmtDate(date)}</h2><button class="x" aria-label="Schließen">✕</button></div>
+        <p class="muted small">Zum Beispiel wenn der Server ausgefallen ist oder jemand nicht mitspielen konnte.
+        ${others.length ? `${others.map(esc).join(', ')} muss zustimmen.` : ''}</p>
+        <button class="choice" data-type="replay">
+          <b>🔁 Tag wiederholen</b>
+          <span>${d ? 'Die Punkte des Tages werden zurückgebucht. ' : ''}Ihr bekommt neue Fragen als Nachholrunde – spielbar ${dueNote}, zusätzlich zur normalen Tagesrunde.</span>
+        </button>
+        ${d && !d.voided ? `<button class="choice" data-type="void">
+          <b>🚫 Tag streichen</b>
+          <span>Die Punkte des Tages werden für alle zurückgebucht, der Tag zählt in dieser Woche nicht.</span>
+        </button>` : ''}
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.onclick = (ev) => { if (ev.target === wrap) close(); };
+    wrap.querySelector('.x').onclick = close;
+    wrap.querySelectorAll('.choice').forEach((b) => (b.onclick = async () => {
+      try {
+        const r = await api(`/games/${g.code}/days/${date}/request`, { method: 'POST', body: { type: b.dataset.type } });
+        close();
+        toast(r.status === 'pending' ? `Anfrage gesendet – ${others.join(', ') || 'Mitspieler'} muss zustimmen` : r.status === 'replay' ? 'Nachholrunde ist offen!' : 'Tag gestrichen');
+        route();
+      } catch (e) { toast(e.message, true); }
+    }));
   }
 
   // ----- Einladung teilen -----
@@ -386,36 +463,43 @@
       return;
     }
     if (d.state === 'paid') return renderReveal($tab, g, d, true);
+    return renderRound($tab, g, d, null);
+  }
 
-    // Offene Runde
+  // Offene Runde spielen. date = null für heute, sonst Datum der Nachholrunde.
+  function renderRound($tab, g, d, date) {
+    const reload = () => (date ? tabDay($tab, g, date) : tabToday($tab, g));
+    const until = Date.now() + d.msUntilPayout;
+    const hh = String(d.payoutHour).padStart(2, '0') + ':00';
+    const head = date ? `<div class="notice replay"><div>🔁 <b>Nachholrunde für ${fmtDate(date)}</b> <span class="small muted">– ${dueText(g, d.due)}, danach Auflösung</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur heutigen Runde</a></div>` : '';
     const total = d.questions.length;
     const next = d.questions.findIndex((q) => q.mine === null);
     const progressHtml = `
-      <div class="card"><h2 style="margin-top:0">Fortschritt heute</h2><div class="progress">
+      <div class="card"><h2 style="margin-top:0">Fortschritt ${date ? 'Nachholrunde' : 'heute'}</h2><div class="progress">
         ${d.progress.map((p) => `<div class="prog">${avatar(p, 26)}<span style="min-width:80px">${esc(p.name)}${p.me ? ' (du)' : ''}</span>
           <span class="bar"><b style="width:${(p.answered / p.total) * 100}%"></b></span><span class="small muted">${p.answered}/${p.total}</span></div>`).join('')}
       </div></div>`;
 
     if (next === -1) {
-      $tab.innerHTML = `
+      $tab.innerHTML = `${head}
         <div class="card center hero">
           <div class="big">🔒</div>
           <h2>Alle ${total} Antworten sind abgegeben</h2>
-          <p class="muted">Die Kasse öffnet um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
-          <div class="countdown" data-until="${until}">--:--:--</div>
+          <p class="muted">Die Kasse öffnet ${date && d.due !== g.today ? 'am ' + fmtDate(d.due) + ' ' : ''}um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
+          ${!date || d.due === g.today ? `<div class="countdown" data-until="${until}">--:--:--</div>` : ''}
         </div>
         ${progressHtml}
         <div class="card"><h2 style="margin-top:0">Deine Tipps</h2>
           ${d.questions.map((q, i) => `<div style="margin-bottom:10px"><div class="small muted">${i + 1}. ${esc(q.genre)}</div><div>${esc(q.q)}</div><div class="pts">→ ${esc(q.options[q.mine])}</div></div>`).join('')}
         </div>`;
       refreshTimer = setInterval(async () => {
-        try { const x = await api(`/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
+        try { const x = await api(date ? `/games/${g.code}/days/${date}` : `/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
       }, 30000);
       return;
     }
 
     const q = d.questions[next];
-    $tab.innerHTML = `
+    $tab.innerHTML = `${head}
       <div class="card">
         <div class="dots">${d.questions.map((x, i) => `<i class="${x.mine !== null ? 'a' : i === next ? 'c' : ''}"></i>`).join('')}</div>
         <div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)}</span></div>
@@ -437,7 +521,7 @@
     const jb = document.getElementById('joker');
     if (jb) jb.onclick = async () => {
       if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Tag.')) return;
-      try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { idx: next } }); tabToday($tab, g); }
+      try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { idx: next, date } }); reload(); }
       catch (e) { toast(e.message, true); }
     };
 
@@ -445,21 +529,26 @@
       $tab.querySelectorAll('.opt').forEach((x) => (x.disabled = true));
       b.classList.add('picked');
       try {
-        await api(`/games/${g.code}/answer`, { method: 'POST', body: { idx: next, choice: +b.dataset.i } });
-        setTimeout(() => tabToday($tab, g), 350);
+        await api(`/games/${g.code}/answer`, { method: 'POST', body: { idx: next, choice: +b.dataset.i, date } });
+        setTimeout(reload, 350);
       } catch (e) { toast(e.message, true); setTimeout(route, 1200); }
     }));
   }
 
   // ----- Auflösung -----
   function renderReveal($tab, g, d, isToday) {
+    if (d.voided) {
+      $tab.innerHTML = `<div class="card center hero"><div class="big">🚫</div><h2>${fmtDate(d.date)} wurde gestrichen</h2>
+        <p class="muted">Ihr habt euch geeinigt, diesen Tag nicht zu werten. Die Punkte wurden zurückgebucht.</p></div>`;
+      return;
+    }
     const others = d.results.filter((r) => !r.me);
     const mine = d.results.find((r) => r.me);
     const best = Math.max(...d.results.map((r) => r.points));
 
     $tab.innerHTML = `
       <div class="card center hero">
-        <div class="small muted">${isToday ? 'Heutige Auszahlung' : 'Auszahlung vom ' + fmtDate(d.date)}</div>
+        <div class="small muted">${isToday ? 'Heutige Auszahlung' : (d.replay ? 'Nachholrunde für ' : 'Auszahlung vom ') + fmtDate(d.date)}</div>
         <div class="row" style="justify-content:center; gap:24px; margin-top:10px">
           ${d.results.map((r) => `
             <div>
@@ -493,7 +582,11 @@
   }
 
   async function tabDay($tab, g, date) {
-    try { renderReveal($tab, g, await api(`/games/${g.code}/days/${date}`), false); }
+    try {
+      const d = await api(`/games/${g.code}/days/${date}`);
+      if (d.state === 'open') return renderRound($tab, g, d, date);
+      renderReveal($tab, g, d, false);
+    }
     catch (e) { $tab.innerHTML = `<div class="card muted">${esc(e.message)}</div>`; }
   }
 
@@ -510,17 +603,25 @@
       <div class="card daylist">
         <h2 style="margin-top:0">Woche ${g.week.no}</h2>
         ${days.map(({ date, n, d }) => {
-          const res = d && d.paid ? d.results.map((r) => `<span class="small">${esc(byId[r.id]?.name || '?')} <b>${r.correct}/${r.total}</b></span>`).join(' · ') : '';
+          const res = d && d.voided ? '<span class="muted small">gestrichen</span>' : d && d.paid ? d.results.map((r) => `<span class="small">${esc(byId[r.id]?.name || '?')} <b>${r.correct}/${r.total}</b></span>`).join(' · ') : '';
           const status = !d ? (n < g.week.day ? '<span class="muted small">nicht gespielt</span>' : n === g.week.day ? '<span class="pill">heute</span>' : '<span class="muted small">—</span>')
-            : d.paid ? res : '<span class="pill">läuft</span>';
-          const inner = `<span>Tag ${n} · ${fmtDate(date)}${d && d.genre ? ` <span class="pill">${esc(d.genre)}</span>` : ''}</span><span>${status}</span>`;
-          return d && d.paid ? `<a class="d" href="#/g/${g.code}/tag/${date}">${inner}</a>` : `<div class="d">${inner}</div>`;
+            : d.paid ? res : d.replayOpen ? '<span class="pill">🔁 Nachholrunde</span>' : '<span class="pill">läuft</span>';
+          const tag = d && d.replay ? ' <span class="pill">nachgeholt</span>' : '';
+          const inner = `<span>Tag ${n} · ${fmtDate(date)}${d && d.genre ? ` <span class="pill">${esc(d.genre)}</span>` : ''}${d && d.paid ? tag : ''}</span><span>${status}</span>`;
+          const past = date < g.today || (date === g.today && d && d.paid);
+          const pending = g.requests.some((r) => r.date === date);
+          const canAct = past && (!d || d.paid) && !pending;
+          const act = canAct ? `<button class="redo" data-act="${date}" title="Tag wiederholen oder streichen">↻</button>`
+            : pending ? '<span class="pill">Anfrage offen</span>' : '';
+          const link = d && (d.paid || d.replayOpen);
+          return `<div class="drow">${link ? `<a class="d" href="#/g/${g.code}/tag/${date}">${inner}</a>` : `<div class="d">${inner}</div>`}${act}</div>`;
         }).join('')}
       </div>
 
       <div class="card small muted">
         <b style="color:var(--text)">Regeln:</b> ${g.rules.perCorrect} P pro richtige Antwort · +${g.rules.perfectBonus} P für einen perfekten Tag ·
         +${g.rules.weekBonus} P für den Wochensieg · ein 50:50-Joker pro Tag · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
+        Mit ↻ lässt sich ein vergangener Tag dieser Woche wiederholen oder streichen, wenn alle zustimmen.
         Genres: ${g.genres.map(esc).join(', ')} (${g.mode === 'daily' ? 'ein Genre pro Tag' : 'gemischt'}, ${g.perDay} Fragen/Tag).
       </div>
 
@@ -530,6 +631,9 @@
         <span>${w.winners.length ? '♛ ' + w.winners.map((id) => esc(byId[id]?.name || '?')).join(' & ') : '<span class="muted">kein Sieger</span>'}
         <span class="muted small">(${Object.entries(w.scores).map(([id, s]) => `${esc(byId[id]?.name || '?')} ${s}`).join(' : ')})</span></span></div>`).join('')}</div>`
         : '<p class="muted">Noch keine abgeschlossene Woche.</p>'}`;
+
+    $tab.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () =>
+      openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act))));
   }
 
   // ----- Tab: Konto -----

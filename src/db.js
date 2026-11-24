@@ -97,6 +97,14 @@ CREATE TABLE IF NOT EXISTS jokers (
   PRIMARY KEY (day_id, player_id, idx)
 );
 
+-- Offene Anfragen „Tag wiederholen/streichen“ (auch für Tage ohne eigene Runde)
+CREATE TABLE IF NOT EXISTS day_requests (
+  game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY (game_id, date)
+);
+
 CREATE TABLE IF NOT EXISTS used_questions (
   game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
   qid TEXT NOT NULL,
@@ -107,6 +115,12 @@ CREATE TABLE IF NOT EXISTS used_questions (
 // Migrationen für bestehende Datenbanken
 const cols = db.prepare('PRAGMA table_info(players)').all().map((c) => c.name);
 if (!cols.includes('avatar')) db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
+const dcols = db.prepare('PRAGMA table_info(days)').all().map((c) => c.name);
+// Tag wiederholen / streichen
+if (!dcols.includes('due_date')) db.exec('ALTER TABLE days ADD COLUMN due_date TEXT');        // Auszahlungstag (Nachholrunde: später als date)
+if (!dcols.includes('replay')) db.exec('ALTER TABLE days ADD COLUMN replay INTEGER NOT NULL DEFAULT 0'); // wie oft wiederholt
+if (!dcols.includes('voided')) db.exec('ALTER TABLE days ADD COLUMN voided INTEGER NOT NULL DEFAULT 0'); // gestrichen
+if (!dcols.includes('history')) db.exec('ALTER TABLE days ADD COLUMN history TEXT');          // frühere Versuche (JSON)
 
 function tx(fn) {
   db.exec('BEGIN');

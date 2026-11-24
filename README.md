@@ -34,6 +34,12 @@ Lokal bauen statt pullen: in der `docker-compose.yml` `image:` auskommentieren, 
 4. Um 20:00 Uhr kommt die Auflösung: Du siehst, wer was getippt hat, und die Punkte werden gebucht.
 5. Nach Tag 7 wird die Woche abgeschlossen. Der Sieger bekommt den Wochenbonus, bei Gleichstand beide.
 
+**Tag wiederholen oder streichen:** Ist der Server ausgefallen oder konnte jemand nicht mitspielen, tippt man in der Wochenansicht bei einem vergangenen Tag der laufenden Woche auf **↻**:
+- **Tag wiederholen:** Die Punkte des Tages werden zurückgebucht (Storno im Konto). Ihr bekommt neue Fragen als **Nachholrunde**, spielbar bis zur nächsten Auszahlung um 20 Uhr, zusätzlich zur normalen Tagesrunde. Das geht auch für Tage, an denen gar nicht gespielt wurde.
+- **Tag streichen:** Die Punkte des Tages werden für alle zurückgebucht, der Tag zählt nicht.
+
+Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage erscheint beim anderen als Hinweis mit „Zustimmen / Ablehnen“. Der alte Stand des Tages wird in der Datenbank archiviert.
+
 **Punkte (Standard):** 10 pro richtige Antwort · +20 für einen perfekten Tag · +100 für den Wochensieg.
 
 Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der Container um 20 Uhr nicht, wird die Auszahlung beim nächsten Start nachgeholt.

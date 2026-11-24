@@ -95,7 +95,7 @@ label.lbl { display: block; font-size: .85rem; color: var(--muted); margin: 12px
   display: inline-flex; align-items: center; gap: 8px; background: var(--bg); border: 1px dashed var(--line);
   padding: 6px 10px; border-radius: 10px; font-weight: 800; letter-spacing: 3px;
 }
-.countdown { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 1.5rem; color: var(--gold2); }
+.countdown { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 1.5rem; color: var(--gold2); }
 .weekbar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 12px; }
 .weekbar span { height: 8px; border-radius: 5px; background: var(--line); }
 .weekbar span.done { background: var(--gold); }
@@ -197,3 +197,31 @@ label.lbl { display: block; font-size: .85rem; color: var(--muted); margin: 12px
 .sh.sms { background: #5b5bd6; }
 .sh.mail { background: #6b6690; }
 .btn.small { padding: 8px 14px; font-size: .9rem; }
+
+/* Hinweise: Anfragen & Nachholrunden */
+.notice {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: rgba(242,181,68,.10); border: 1px solid var(--gold); border-radius: var(--r); padding: 14px 16px; margin: 14px 0;
+}
+.notice.muted-n { background: var(--bg2); border-color: var(--line); }
+.notice.replay { background: rgba(122,167,255,.10); border-color: rgba(122,167,255,.6); }
+.notice .small { margin-top: 4px; }
+
+/* Wochenliste mit Wiederholen-Knopf */
+.drow { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.drow:last-child { border: 0; }
+.drow .d { flex: 1; border: 0 !important; }
+.redo {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
+  color: var(--muted); font-size: 1.05rem; flex: none;
+}
+.redo:hover { border-color: var(--gold); color: var(--gold2); }
+
+/* Auswahl im Sheet */
+.choice {
+  display: block; width: 100%; text-align: left; margin-top: 10px; padding: 14px 16px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+}
+.choice:hover { border-color: var(--gold); }
+.choice b { display: block; margin-bottom: 4px; }
+.choice span { color: var(--muted); font-size: .88rem; }

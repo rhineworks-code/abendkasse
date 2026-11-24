@@ -157,26 +157,54 @@ function pickQuestions(game, genre) {
   return picked;
 }
 
-function createDay(game, date) {
+function newQuestions(game, date) {
   let genre = dayGenre(game, date);
   if (genre && Q.all().filter((q) => q.genre === genre).length < game.per_day) genre = null;
-  const picked = pickQuestions(game, genre);
-  const questions = picked.map((q) => {
+  const questions = pickQuestions(game, genre).map((q) => {
     const options = shuffle([q.correct, ...q.wrong]);
     return { id: q.id, genre: q.genre, q: q.q, options, answer: options.indexOf(q.correct) };
   });
+  const ins = db.prepare('INSERT OR IGNORE INTO used_questions (game_id, qid) VALUES (?, ?)');
+  questions.forEach((q) => ins.run(game.id, q.id));
+  return { genre, questions };
+}
+
+function createDay(game, date, dueDate = null, replay = 0) {
   return tx(() => {
-    const ins = db.prepare('INSERT OR IGNORE INTO used_questions (game_id, qid) VALUES (?, ?)');
-    questions.forEach((q) => ins.run(game.id, q.id));
-    db.prepare('INSERT OR IGNORE INTO days (game_id, date, week_no, genre, questions) VALUES (?, ?, ?, ?, ?)')
-      .run(game.id, date, game.week_no, genre, JSON.stringify(questions));
+    const { genre, questions } = newQuestions(game, date);
+    db.prepare('INSERT OR IGNORE INTO days (game_id, date, week_no, genre, questions, due_date, replay) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(game.id, date, game.week_no, genre, JSON.stringify(questions), dueDate, replay);
     return getDay(game.id, date);
   });
 }
 
-function getDay(gameId, date) {
-  const d = db.prepare('SELECT * FROM days WHERE game_id = ? AND date = ?').get(gameId, date);
-  if (d) d.questions = JSON.parse(d.questions);
+function parseDay(d) {
+  if (!d) return d;
+  d.questions = JSON.parse(d.questions);
+  d.history = d.history ? JSON.parse(d.history) : [];
+  return d;
+}
+
+const getDay = (gameId, date) => parseDay(db.prepare('SELECT * FROM days WHERE game_id = ? AND date = ?').get(gameId, date));
+const dueOf = (d) => d.due_date || d.date;
+
+// Ist eine Nachholrunde (Tag in der Vergangenheit) gerade spielbar?
+function replayOpen(d, n = T.now()) {
+  if (!d || d.paid || !d.replay) return false;
+  const due = dueOf(d);
+  return due > n.date || (due === n.date && !isAfterPayout(n));
+}
+
+// Runde, auf die geantwortet werden darf: heute oder eine offene Nachholrunde
+function playableDay(game, date) {
+  const n = T.now();
+  if (!date || date === n.date) {
+    const st = todayState(game);
+    if (st.state !== 'open') throw httpError(409, 'Die heutige Runde ist geschlossen.');
+    return st.day;
+  }
+  const d = getDay(game.id, date);
+  if (!replayOpen(d, n)) throw httpError(409, 'Diese Runde ist nicht offen.');
   return d;
 }
 
@@ -191,10 +219,8 @@ function todayState(game) {
   return { state: 'open', date: n.date, day: day || createDay(game, n.date) };
 }
 
-function answer(game, player, idx, choice) {
-  const st = todayState(game);
-  if (st.state !== 'open') throw httpError(409, 'Die heutige Runde ist geschlossen.');
-  const day = st.day;
+function answer(game, player, idx, choice, date) {
+  const day = playableDay(game, date);
   if (!Number.isInteger(idx) || idx < 0 || idx >= day.questions.length) throw httpError(400, 'Ungültige Frage.');
   if (!Number.isInteger(choice) || choice < 0 || choice >= day.questions[idx].options.length) throw httpError(400, 'Ungültige Antwort.');
   const j = jokersOf(day.id, player.id).find((x) => x.idx === idx);
@@ -211,10 +237,8 @@ const jokersOf = (dayId, playerId) =>
   db.prepare('SELECT idx, removed FROM jokers WHERE day_id = ? AND player_id = ?').all(dayId, playerId)
     .map((j) => ({ idx: j.idx, removed: JSON.parse(j.removed) }));
 
-function useJoker(game, player, idx) {
-  const st = todayState(game);
-  if (st.state !== 'open') throw httpError(409, 'Die heutige Runde ist geschlossen.');
-  const day = st.day;
+function useJoker(game, player, idx, date) {
+  const day = playableDay(game, date);
   if (!Number.isInteger(idx) || idx < 0 || idx >= day.questions.length) throw httpError(400, 'Ungültige Frage.');
   if (answersOf(day.id, player.id)[idx] !== undefined) throw httpError(409, 'Diese Frage ist schon beantwortet.');
   const used = jokersOf(day.id, player.id);
@@ -254,7 +278,8 @@ function payoutDay(day) {
       db.prepare('INSERT OR REPLACE INTO results (day_id, player_id, correct, total, points) VALUES (?, ?, ?, ?, ?)')
         .run(day.id, p.id, correct, total, points);
       if (points > 0) {
-        const reason = correct === total ? `Tagesrunde: ${correct}/${total} richtig (inkl. Perfekt-Bonus)` : `Tagesrunde: ${correct}/${total} richtig`;
+        const kind = day.replay ? 'Nachholrunde' : 'Tagesrunde';
+        const reason = correct === total ? `${kind}: ${correct}/${total} richtig (inkl. Perfekt-Bonus)` : `${kind}: ${correct}/${total} richtig`;
         db.prepare('INSERT INTO ledger (game_id, player_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?)')
           .run(day.game_id, p.id, points, reason, day.date);
       }
@@ -265,6 +290,107 @@ function payoutDay(day) {
 
   console.log(`[Auszahlung] ${game.code} ${day.date}:`, summary.map((s) => `${s.name} ${s.correct}/${s.total} +${s.points}`).join(', '));
   notify({ type: 'payout', game: game.name, code: game.code, date: day.date, results: summary });
+}
+
+// ---------- Tag wiederholen / streichen (mit Zustimmung aller Mitspieler) ----------
+//
+// replay: Punkte des Tages werden storniert, es gibt neue Fragen als Nachholrunde bis zur nächsten Auszahlung.
+//         Funktioniert auch für Tage, an denen gar nicht gespielt wurde (z. B. Server war aus).
+// void:   Punkte des Tages werden storniert, der Tag zählt nicht.
+
+const ACTIONS = { replay: 'wiederholen', void: 'streichen' };
+
+function checkActionable(game, date, type) {
+  const n = T.now();
+  if (!ACTIONS[type]) throw httpError(400, 'Unbekannte Aktion.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw httpError(400, 'Ungültiges Datum.');
+  const end = T.addDays(game.week_start, cfg.WEEK_DAYS - 1);
+  if (date < game.week_start || date > end) throw httpError(409, 'Nur Tage der laufenden Woche können geändert werden.');
+  const d = getDay(game.id, date);
+  if (date > n.date || (date === n.date && !(d && d.paid))) throw httpError(409, 'Die Runde läuft noch – das geht erst nach der Auszahlung.');
+  if (d && !d.paid) throw httpError(409, 'Für diesen Tag läuft schon eine Nachholrunde.');
+  if (d && d.voided && type === 'void') throw httpError(409, 'Der Tag ist schon gestrichen.');
+  if (!d && type === 'void') throw httpError(409, 'An diesem Tag gibt es keine Punkte zu streichen.');
+  if (type === 'replay' && date === end && n.date === end && isAfterPayout(n)) throw httpError(409, 'Die Woche ist schon abgerechnet.');
+  return d;
+}
+
+function requestDayAction(game, player, date, type) {
+  checkActionable(game, date, type);
+  if (getRequest(game, date)) throw httpError(409, 'Für diesen Tag gibt es schon eine offene Anfrage.');
+  const req = { type, by: player.id, at: new Date().toISOString(), ok: [player.id] };
+  saveRequest(game, date, req);
+  notify({ type: 'request', game: game.name, code: game.code, date, action: type, by: player.name });
+  return applyIfAgreed(game, date, req);
+}
+
+function getRequest(game, date) {
+  const r = db.prepare('SELECT data FROM day_requests WHERE game_id = ? AND date = ?').get(game.id, date);
+  return r ? JSON.parse(r.data) : null;
+}
+
+function saveRequest(game, date, req) {
+  if (req) db.prepare('INSERT OR REPLACE INTO day_requests (game_id, date, data) VALUES (?, ?, ?)').run(game.id, date, JSON.stringify(req));
+  else db.prepare('DELETE FROM day_requests WHERE game_id = ? AND date = ?').run(game.id, date);
+}
+
+function answerDayRequest(game, player, date, accept) {
+  const req = getRequest(game, date);
+  if (!req) throw httpError(404, 'Keine offene Anfrage für diesen Tag.');
+  if (!accept) { saveRequest(game, date, null); return { status: 'rejected' }; }
+  if (!req.ok.includes(player.id)) req.ok.push(player.id);
+  saveRequest(game, date, req);
+  return applyIfAgreed(game, date, req);
+}
+
+function applyIfAgreed(game, date, req) {
+  const ids = gamePlayers(game.id).map((p) => p.id);
+  if (!ids.every((id) => req.ok.includes(id))) return { status: 'pending' };
+  try { checkActionable(game, date, req.type); } catch (e) { saveRequest(game, date, null); throw e; }
+  const n = T.now();
+  const players = gamePlayers(game.id);
+  let d = getDay(game.id, date);
+
+  tx(() => {
+    if (d) {
+      // Punkte stornieren und alten Stand archivieren
+      const results = db.prepare('SELECT player_id, correct, total, points FROM results WHERE day_id = ?').all(d.id);
+      for (const r of results) {
+        if (r.points > 0) {
+          db.prepare('INSERT INTO ledger (game_id, player_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?)')
+            .run(game.id, r.player_id, -r.points, req.type === 'void' ? 'Storno: Tag gestrichen' : 'Storno: Tag wird wiederholt', date);
+        }
+      }
+      d.history.push({
+        at: new Date().toISOString(), action: req.type, by: req.by,
+        questions: d.questions, results,
+        answers: db.prepare('SELECT player_id, idx, choice FROM answers WHERE day_id = ?').all(d.id),
+        jokers: db.prepare('SELECT player_id, idx, removed FROM jokers WHERE day_id = ?').all(d.id),
+      });
+      ['results', 'answers', 'jokers'].forEach((t) => db.prepare(`DELETE FROM ${t} WHERE day_id = ?`).run(d.id));
+    }
+
+    if (req.type === 'void') {
+      db.prepare('UPDATE days SET voided = 1, history = ? WHERE id = ?').run(JSON.stringify(d.history), d.id);
+    } else {
+      const due = freshStart(n); // spielbar bis zur nächsten Auszahlung
+      if (d) {
+        const { genre, questions } = newQuestions(game, date);
+        db.prepare(`UPDATE days SET questions = ?, genre = ?, paid = 0, voided = 0, replay = replay + 1,
+          due_date = ?, history = ? WHERE id = ?`)
+          .run(JSON.stringify(questions), genre, due, JSON.stringify(d.history), d.id);
+      } else {
+        const { genre, questions } = newQuestions(game, date);
+        db.prepare('INSERT INTO days (game_id, date, week_no, genre, questions, due_date, replay) VALUES (?, ?, ?, ?, ?, ?, 1)')
+          .run(game.id, date, game.week_no, genre, JSON.stringify(questions), due);
+      }
+    }
+  });
+  saveRequest(game, date, null);
+  console.log(`[Tag] ${game.code} ${date}: ${ACTIONS[req.type]} (von allen bestätigt)`);
+  notify({ type: req.type === 'void' ? 'day_voided' : 'day_replay', game: game.name, code: game.code, date,
+    players: players.map((p) => p.name) });
+  return { status: req.type === 'void' ? 'voided' : 'replay' };
 }
 
 // Woche abschließen, wenn der letzte Tag ausgezahlt ist
@@ -313,9 +439,9 @@ function closeWeekIfDue(game) {
 function tick(force = false) {
   const n = T.now();
   const due = db.prepare('SELECT * FROM days WHERE paid = 0').all().filter((d) =>
-    d.date < n.date || (d.date === n.date && (isAfterPayout(n) || force)));
+    dueOf(d) < n.date || (dueOf(d) === n.date && (isAfterPayout(n) || force)));
   for (const d of due) {
-    d.questions = JSON.parse(d.questions);
+    parseDay(d);
     try { payoutDay(d); } catch (e) { console.error('[Auszahlung] Fehler', e); }
   }
   for (const g of db.prepare('SELECT * FROM games').all()) {
@@ -338,11 +464,24 @@ function overview(game, me) {
     WHERE d.game_id = ? AND d.week_no = ? GROUP BY r.player_id`).all(game.id, game.week_no)
     .forEach((r) => (weekScores[r.player_id] = r.pts));
 
-  const days = db.prepare('SELECT id, date, week_no, genre, paid FROM days WHERE game_id = ? ORDER BY date DESC LIMIT 60').all(game.id)
-    .map((d) => ({
-      date: d.date, week: d.week_no, genre: d.genre, paid: !!d.paid,
+  const days = db.prepare('SELECT * FROM days WHERE game_id = ? ORDER BY date DESC LIMIT 60').all(game.id)
+    .map(parseDay).map((d) => ({
+      date: d.date, week: d.week_no, genre: d.genre, paid: !!d.paid, voided: !!d.voided, replay: d.replay,
+      due: dueOf(d), replayOpen: replayOpen(d, n),
       results: d.paid ? db.prepare('SELECT player_id AS id, correct, total, points FROM results WHERE day_id = ?').all(d.id) : [],
     }));
+
+  // Offene Anfragen (Wiederholen/Streichen) für die laufende Woche
+  const names = Object.fromEntries(players.map((p) => [p.id, p.name]));
+  const weekEndDate = T.addDays(game.week_start, cfg.WEEK_DAYS - 1);
+  // Anfragen aus vergangenen Wochen verfallen
+  db.prepare('DELETE FROM day_requests WHERE game_id = ? AND (date < ? OR date > ?)').run(game.id, game.week_start, weekEndDate);
+  const requests = db.prepare('SELECT date, data FROM day_requests WHERE game_id = ?').all(game.id)
+    .map((r) => ({ date: r.date, ...JSON.parse(r.data) }));
+  const reqView = requests.map((r) => ({
+    date: r.date, type: r.type, by: r.by, byName: names[r.by] || '?', mine: r.by === me.id,
+    needMe: !r.ok.includes(me.id), waitingFor: players.filter((p) => !r.ok.includes(p.id)).map((p) => p.name),
+  })).sort((a, b) => a.date.localeCompare(b.date));
 
   const weeks = db.prepare('SELECT * FROM weeks WHERE game_id = ? ORDER BY week_no DESC').all(game.id)
     .map((w) => ({ week: w.week_no, start: w.start_date, end: w.end_date, scores: JSON.parse(w.scores), winners: JSON.parse(w.winners) }));
@@ -353,7 +492,7 @@ function overview(game, me) {
     week: { no: game.week_no, start: game.week_start, end: weekEnd, length: cfg.WEEK_DAYS,
       day: n.date < game.week_start ? 0 : T.diffDays(game.week_start, n.date) + 1 },
     players: players.map((p) => ({ ...p, week: weekScores[p.id] || 0, me: p.id === me.id })),
-    days, weeks,
+    days, weeks, requests: reqView, today: n.date, afterPayout: isAfterPayout(n),
     rules: { perCorrect: cfg.POINTS_PER_CORRECT, perfectBonus: cfg.PERFECT_DAY_BONUS, weekBonus: cfg.WEEK_WIN_BONUS, payoutHour: cfg.PAYOUT_HOUR },
     msUntilPayout: T.msUntilHour(cfg.PAYOUT_HOUR),
   };
@@ -361,7 +500,9 @@ function overview(game, me) {
 
 function dayView(game, me, date, st) {
   const day = st ? st.day : getDay(game.id, date);
+  if (!st && replayOpen(day)) st = { state: 'open', date, day };
   const base = { state: st ? st.state : day ? (day.paid ? 'paid' : 'pending') : 'none', date,
+    replay: day ? day.replay : 0, voided: day ? !!day.voided : false, due: day ? dueOf(day) : date,
     msUntilPayout: T.msUntilHour(cfg.PAYOUT_HOUR), payoutHour: cfg.PAYOUT_HOUR };
   if (!day) return base;
 
@@ -415,6 +556,6 @@ function notify(payload) {
 
 module.exports = {
   createPlayer, playerByToken, createGame, getGame, joinGame, isMember, gamesOfPlayer,
-  renamePlayer, setAvatar, clearAvatar, AVATAR_DIR, useJoker,
+  renamePlayer, setAvatar, clearAvatar, AVATAR_DIR, useJoker, requestDayAction, answerDayRequest,
   todayState, answer, tick, overview, dayView, ledgerOf, httpError,
 };
