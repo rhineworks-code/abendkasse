@@ -432,8 +432,8 @@
     const lv = genres.reduce((a, g) => { [1, 2, 3].forEach((l) => (a[l] += g.levels?.[l] || 0)); return a; }, { 1: 0, 2: 0, 3: 0 });
 
     $app.innerHTML = `
-      <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
-      <a class="card traincard" href="#/training"><div class="spread"><div><b>🎓 Training</b><div class="small muted">Alleine üben – sofortige Auflösung, keine Wartezeit, keine Punkte.</div></div><span class="pill">Los ›</span></div></a>
+      <h1>Hallo ${esc(me.name)}!</h1>
+      <a class="card traincard" href="#/training"><div class="spread"><div><b>🎓 Training</b><div class="small muted">Alleine üben – sofortige Auflösung, keine Wartezeit, keine Punkte.</div></div><span class="pill" style="white-space:nowrap;flex:none">Los ›</span></div></a>
       <h2>Deine Spiele</h2>
       <div class="gamelist">
         ${me.games.length ? me.games.map((g) => `
