@@ -79,6 +79,10 @@ Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage ersche
 
 **Themenwoche:** Unter **Woche → Themenwoche** einschalten. Dann dreht sich eine ganze Woche um ein Genre. Der **Wochensieger wählt das Thema der nächsten Woche** und bekommt dazu eine Push-Nachricht. Wählt niemand bis zur ersten Runde der neuen Woche, entscheidet der Zufall. Bei 10 Fragen am Tag kann sich innerhalb einer Themenwoche eine Frage wiederholen, weil ein Genre nur rund 70 Fragen hat.
 
+**Spieloptionen:** Über **⚙️ Optionen** im Spiel lassen sich jederzeit Name, Genres, Fragen-Mix, Schwierigkeit, Fragen pro Tag (5/10/15/20) sowie Joker (aus/1/2), Einsätze, Tempo-Bonus, Duell-Frage und Extrarunde ändern. Jede Runde merkt sich die Optionen, mit denen sie erstellt wurde – Änderungen gelten ab der nächsten Runde, der Mitspieler bekommt eine Nachricht.
+
+**🎓 Training:** Alleine üben, ohne Punkte und ohne Warten: Genres, Schwierigkeit und Anzahl (5/10/20) wählen, jede Antwort wird sofort mit Erklärung aufgelöst, danach direkt „Neue Runde“. Bevorzugt kommen Fragen, die man noch nie gesehen hat. „Fehler wiederholen“ nimmt Fragen, die man zuletzt falsch hatte – aus Training und Spielrunden. Damit Training im Duell keinen Vorteil bringt, kommen dort Fragen, die einer der Spieler schon geübt hat, erst dran, wenn sonst nichts mehr übrig ist.
+
 **Fragen melden:** In der Auflösung hat jede Frage einen Knopf **⚑ Melden** (Antwort falsch, zu schwer, zu leicht, unklar, Sonstiges). Im Admin-Bereich unter **Meldungen** stehen sie mit der bisherigen Trefferquote der Frage und können die **Stufe ändern** oder die Frage **aussortieren**. Das gilt sofort. Falsche Antworten korrigiert man dauerhaft in der JSON-Datei.
 
 **Statistik & Abzeichen:** Im Tab **Statistik** stehen Trefferquote gesamt, pro Genre, Stufe und Fragetyp, Wochen- und Tagessiege im direkten Vergleich, aktuelle und längste Serie, Duelle, Tempo-Boni, Einsätze und Punkte pro Woche. Dazu gibt es Hinweise wie „Du bist in Geschichte stärker als Sarah“ und 23 **Abzeichen** (Perfekter Tag, 5 Wochensiege, 7 Tage am Stück, 50 richtige pro Genre, Hellseher, Zocker …). Neue Abzeichen werden nach der Auszahlung per Push gemeldet.
@@ -250,6 +254,6 @@ src/reports.js    Gemeldete Fragen, Korrekturen am Katalog
 src/backup.js     Nächtliche Sicherung
 src/push.js       Web-Push
 src/updater.js    Update-Prüfung (GitHub) und Anstoßen des Updaters
-questions/        mitgelieferte Fragen (623 in 8 Genres inkl. Wahr/Falsch, Reihenfolge und 60 Flaggen, dazu 59 Schätzfragen; alle mit Erklärung)
+questions/        mitgelieferte Fragen (1152 in 8 Genres inkl. Wahr/Falsch, Reihenfolge und 60 Flaggen, dazu 59 Schätzfragen; alle mit Erklärung)
 public/           Frontend
 ```

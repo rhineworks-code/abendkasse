@@ -183,6 +183,30 @@ CREATE TABLE IF NOT EXISTS achievements (
   PRIMARY KEY (game_id, player_id, key)
 );
 
+-- Training: alleine üben, sofortige Auflösung, keine Punkte
+CREATE TABLE IF NOT EXISTS train_rounds (
+  id INTEGER PRIMARY KEY,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL,
+  settings TEXT NOT NULL,
+  questions TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS train_answers (
+  round_id INTEGER NOT NULL REFERENCES train_rounds(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  player_id INTEGER NOT NULL,
+  qid TEXT NOT NULL,
+  genre TEXT,
+  level INTEGER,
+  correct INTEGER NOT NULL,
+  given TEXT,
+  answered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (round_id, idx)
+);
+CREATE INDEX IF NOT EXISTS train_answers_player ON train_answers(player_id, qid);
+
 -- Admin-Bereich (/admin): eigene Konten, unabhängig von Spielern
 CREATE TABLE IF NOT EXISTS admin_users (
   id INTEGER PRIMARY KEY,
@@ -257,6 +281,8 @@ if (!db.prepare('PRAGMA table_info(days)').all().some((c) => c.name === 'kind'))
   console.log('[DB] Tabelle days für Extrarunden umgebaut');
 }
 addCol('days', 'duel', 'TEXT');                           // Duell-Frage des Tages (JSON)
+addCol('days', 'opts', 'TEXT');                           // Spieloptionen zum Zeitpunkt der Runde (JSON)
+addCol('games', 'opts', 'TEXT');                          // Spieloptionen: Joker, Einsätze, Tempo, Duell, Extrarunde (JSON)
 
 function tx(fn) {
   db.exec('BEGIN');

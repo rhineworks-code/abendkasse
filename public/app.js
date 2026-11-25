@@ -249,6 +249,7 @@
       }
       if (parts[0] === 'g' && parts[1]) return viewGame(parts[1].toUpperCase(), parts[2] || 'heute', parts[3]);
       if (parts[0] === 'profil') return viewProfile();
+      if (parts[0] === 'training') return parts[1] ? viewTrainRound(+parts[1]) : viewTraining();
       return viewLobby();
     } catch (e) {
       $app.innerHTML = `<div class="card"><b>Hoppla.</b><p class="muted">${esc(e.message)}</p><a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
@@ -409,6 +410,7 @@
 
     $app.innerHTML = `
       <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
+      <a class="card traincard" href="#/training"><div class="spread"><div><b>🎓 Training</b><div class="small muted">Alleine üben – sofortige Auflösung, keine Wartezeit, keine Punkte.</div></div><span class="pill">Los ›</span></div></a>
       <h2>Deine Spiele</h2>
       <div class="gamelist">
         ${me.games.length ? me.games.map((g) => `
@@ -495,6 +497,7 @@
           <span class="codebox" title="Spiel-Code">${g.code}</span>
           <button class="btn small" data-invite>📨 Einladung senden</button>
           <span class="muted">${g.players.length}/${g.maxPlayers} Spieler</span>
+          <a class="btn ghost small" href="#/g/${g.code}/optionen" title="Spieloptionen" style="margin-left:auto">⚙️ Optionen</a>
         </div>
       </div>
 
@@ -529,6 +532,7 @@
     if (tab === 'tag' && arg) return tabDay($tab, g, arg);
     if (tab === 'extra' && arg) return tabExtra($tab, g, arg);
     if (tab === 'statistik') return tabStats($tab, g);
+    if (tab === 'optionen') return tabOptions($tab, g);
     return tabToday($tab, g);
   }
 
@@ -739,6 +743,12 @@
     if (next !== -1) {
       const q = d.questions[next];
       const qhead = `<div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>`;
+      if (!q.opened && !d.stake.enabled) {
+        // Ohne Einsätze: Frage direkt aufdecken (die Zeit startet mit dem Anzeigen)
+        $tab.innerHTML = `${head}<div class="card">${dots}${qhead}<div class="loading">Frage wird aufgedeckt …</div></div>${progressHtml}`;
+        api(`/games/${g.code}/open`, { method: 'POST', body: { ...target, idx: next, stake: 0 } }).then(reload).catch((e) => toast(e.message, true));
+        return;
+      }
       if (!q.opened) {
         const avail = d.stake.available;
         let stake = 0;
@@ -750,7 +760,7 @@
             <p class="small muted" style="margin:0 0 12px">Richtig: Einsatz gewinnen · Falsch: Einsatz verlieren · Verfügbar: <b>${avail} P</b></p>
             <div class="stakes">${d.stake.steps.map((v) => `<button class="stk ${v === 0 ? 'on' : ''}" data-v="${v}" ${v > avail ? 'disabled' : ''}>${v === 0 ? 'Ohne' : v + ' P'}</button>`).join('')}</div>
             <button class="btn block" id="reveal" style="margin-top:14px">Frage aufdecken ⏱</button>
-            <p class="small muted" style="margin:10px 0 0">Ab dem Aufdecken läuft die Zeit – richtig in unter ${d.tempo.seconds} Sekunden gibt +${d.tempo.bonus} P.</p>
+            ${d.tempo ? `<p class="small muted" style="margin:10px 0 0">Ab dem Aufdecken läuft die Zeit – richtig in unter ${d.tempo.seconds} Sekunden gibt +${d.tempo.bonus} P.</p>` : ''}
           </div>
           ${progressHtml}`;
         $tab.querySelectorAll('.stk').forEach((b) => (b.onclick = () => {
@@ -767,7 +777,7 @@
 
       const start = Date.now() - (q.elapsed || 0);
       const stakePill = q.stake ? `<span class="pill stake">Einsatz ${q.stake} P</span>` : '';
-      const canJoker = q.type !== 'order' && q.type !== 'tf' && q.options && q.options.length >= 4;
+      const canJoker = d.jokers.total > 0 && q.type !== 'order' && q.type !== 'tf' && q.options && q.options.length >= 4;
       const jokerHtml = !canJoker ? '' : q.removed.length ? '<span class="joker used">50:50 aktiv</span>'
         : d.jokers.left > 0 ? `<button class="joker" id="joker" title="Entfernt zwei falsche Antworten">50:50 <small>${d.jokers.left}×</small></button>`
         : '<span class="joker used">Joker verbraucht</span>';
@@ -784,7 +794,7 @@
       $tab.innerHTML = `${head}
         <div class="card">
           ${dots}${qhead}
-          <div class="spread" style="margin-bottom:6px"><span class="timer" data-start="${start}" data-tempo="${d.tempo.seconds}">0,0 s</span>${stakePill}</div>
+          <div class="spread" style="margin-bottom:6px">${d.tempo ? `<span class="timer" data-start="${start}" data-tempo="${d.tempo.seconds}">0,0 s</span>` : '<span></span>'}${stakePill}</div>
           ${q.image ? `<img class="qimg" src="${esc(q.image)}" alt="Bild zur Frage">` : ''}
           <div class="qtext">${esc(q.q)}</div>
           ${answerHtml}
@@ -798,13 +808,13 @@
       const send = async (body) => {
         try {
           const r = await api(`/games/${g.code}/answer`, { method: 'POST', body: { ...target, idx: next, ...body } });
-          if (r.fast) toast(`⚡ Unter ${d.tempo.seconds} Sekunden!`);
+          if (r.fast && d.tempo) toast(`⚡ Unter ${d.tempo.seconds} Sekunden!`);
           setTimeout(next === total - 1 && !d.duel ? route : reload, 350);
         } catch (e) { toast(e.message, true); setTimeout(route, 1200); }
       };
       const jb = document.getElementById('joker');
       if (jb) jb.onclick = async () => {
-        if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Runde.')) return;
+        if (!confirm(`50:50-Joker für diese Frage einsetzen? ${d.jokers.left > 1 ? `Du hast noch ${d.jokers.left} für diese Runde.` : 'Danach ist keiner mehr übrig.'}`)) return;
         try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { ...target, idx: next } }); reload(); }
         catch (e) { toast(e.message, true); }
       };
@@ -1051,19 +1061,15 @@
           : g.theme.mode && !g.theme.theme && g.theme.chooser ? `<p class="small muted" style="margin:0">${esc(g.theme.chooser)} wählt das Thema.</p>` : ''}
       </div>
 
-      <div class="card">
-        <h2 style="margin-top:0">Schwierigkeit</h2>
-        ${diffSeg('gdiff', g.difficulty)}
-        <p class="small muted" style="margin:8px 0 0">Gilt ab der nächsten neuen Runde – bereits gestellte Fragen bleiben.</p>
-      </div>
+      <a class="notice muted-n" href="#/g/${g.code}/optionen" style="color:var(--text)"><span>⚙️ <b>Spieloptionen</b> <span class="small muted">– Genres, Schwierigkeit, Fragen pro Tag, Joker, Einsätze …</span></span><span>›</span></a>
 
       <div class="card small muted">
         <b style="color:var(--text)">Regeln:</b> ${g.rules.perCorrect} P pro richtige Antwort · +${g.rules.perfectBonus} P für einen perfekten Tag ·
-        +${g.rules.weekBonus} P für den Wochensieg · ein 50:50-Joker pro Tag · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
+        +${g.rules.weekBonus} P für den Wochensieg · ${g.options.jokers ? `${g.options.jokers === 1 ? 'ein' : g.options.jokers} 50:50-Joker pro Runde` : 'keine Joker'} · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
         Mit ↻ lässt sich ein vergangener Tag dieser Woche wiederholen oder streichen, wenn alle zustimmen.
-        Seid ihr beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig, gibt es auf Wunsch eine Extrarunde mit ${g.rules.extraQuestions} Fragen.
-        Vor jeder Frage kannst du bis zu ${g.rules.maxStake} P setzen · richtig in unter ${g.rules.tempoSeconds} s: +${g.rules.tempoBonus} P ·
-        Duell-Frage: +${g.rules.duelPoints} P für die beste Schätzung · Erinnerung um ${g.rules.reminderHour} Uhr.
+        ${g.options.extra ? `Seid ihr beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig, gibt es auf Wunsch eine Extrarunde mit ${g.rules.extraQuestions} Fragen.` : ''}
+        ${g.options.stakes ? `Vor jeder Frage kannst du bis zu ${g.rules.maxStake} P setzen ·` : ''} ${g.options.tempo ? `richtig in unter ${g.rules.tempoSeconds} s: +${g.rules.tempoBonus} P ·` : ''}
+        ${g.options.duel ? `Duell-Frage: +${g.rules.duelPoints} P für die beste Schätzung ·` : ''} Erinnerung um ${g.rules.reminderHour} Uhr.
         Genres: ${g.genres.map(esc).join(', ')} (${g.mode === 'daily' ? 'ein Genre pro Tag' : 'gemischt'}, ${g.perDay} Fragen/Tag).
       </div>
 
@@ -1084,12 +1090,202 @@
       try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { theme: c.dataset.theme } }); toast(`Thema: ${c.dataset.theme}`); route(); }
       catch (e) { toast(e.message, true); }
     }));
-    bindDiffSeg('gdiff', async (d) => {
-      try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { difficulty: d } }); g.difficulty = d; toast(`Schwierigkeit: ${DIFF[d].label} – ab der nächsten Runde`); }
-      catch (e) { toast(e.message, true); }
-    });
     $tab.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () =>
       openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act && x.kind !== 'extra'))));
+  }
+
+  // ----- Tab: Spieloptionen (auch während eines laufenden Spiels) -----
+  async function tabOptions($tab, g) {
+    const genres = await api('/genres');
+    const st = { name: g.name, genres: new Set(g.genres), mode: g.mode, difficulty: g.difficulty, perDay: g.perDay, options: { ...g.options } };
+    const sw = (k, title, hint) => `<div class="optrow"><div><b>${title}</b><div class="small muted">${hint}</div></div>
+      <label class="switch"><input type="checkbox" data-opt="${k}" ${st.options[k] ? 'checked' : ''}><span></span></label></div>`;
+    const seg = (id, list, cur, fmt = (v) => v) => `<div class="seg" id="${id}">${list.map((v) => `<button type="button" data-v="${v}" class="${String(v) === String(cur) ? 'on' : ''}">${fmt(v)}</button>`).join('')}</div>`;
+    $tab.innerHTML = `
+      <div class="notice muted-n"><div>⚙️ <b>Spieloptionen</b><div class="small muted">Änderungen gelten ab der nächsten neuen Runde – eine laufende Runde bleibt, wie sie ist. ${g.players.length > 1 ? 'Dein Mitspieler bekommt eine Nachricht.' : ''}</div></div></div>
+      <form id="optf">
+        <div class="card">
+          <h2 style="margin-top:0">Allgemein</h2>
+          <label class="lbl" style="margin-top:0">Name</label>
+          <input type="text" name="name" maxlength="40" value="${esc(g.name)}">
+          <label class="lbl">Genres</label>
+          <div class="chips" id="ogenres">${genres.map((x) => `<span class="chip ${st.genres.has(x.name) ? 'on' : ''}" data-g="${esc(x.name)}">${esc(x.name)} <span class="muted small">${x.count}</span></span>`).join('')}</div>
+          <label class="lbl">Fragen-Mix</label>
+          ${seg('omode', ['mix', 'daily'], st.mode, (v) => (v === 'mix' ? 'Bunt gemischt' : 'Ein Genre pro Tag'))}
+          <label class="lbl">Schwierigkeit</label>
+          ${diffSeg('odiff', st.difficulty)}
+          <label class="lbl">Fragen pro Tag</label>
+          ${seg('operday', [5, 10, 15, 20], st.perDay)}
+        </div>
+        <div class="card">
+          <h2 style="margin-top:0">Spielregeln</h2>
+          <div class="optrow"><div><b>50:50-Joker pro Runde</b><div class="small muted">Entfernt zwei falsche Antworten.</div></div>
+            ${seg('ojokers', [0, 1, 2], st.options.jokers, (v) => (v ? v + '×' : 'Aus'))}</div>
+          ${sw('stakes', 'Einsätze', `Vor jeder Frage bis zu ${g.rules.maxStake} P setzen – richtig gewinnt, falsch verliert.`)}
+          ${sw('tempo', 'Tempo-Bonus', `Richtig in unter ${g.rules.tempoSeconds} Sekunden: +${g.rules.tempoBonus} P.`)}
+          ${sw('duel', 'Duell-Frage', `Eine Schätzfrage pro Tag, die bessere Schätzung bekommt +${g.rules.duelPoints} P.`)}
+          ${sw('extra', 'Extrarunde', `Beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig? Dann gibt's auf Wunsch ${g.rules.extraQuestions} Zusatzfragen.`)}
+          <p class="small muted" style="margin:12px 0 0">Die Themenwoche schaltest du im Tab <a href="#/g/${g.code}/woche">Woche</a> ein.</p>
+        </div>
+        <div class="row"><button class="btn grow">Speichern</button><a class="btn ghost" href="#/g/${g.code}">Abbrechen</a></div>
+      </form>`;
+    $tab.querySelectorAll('#ogenres .chip').forEach((c) => (c.onclick = () => {
+      const x = c.dataset.g;
+      if (st.genres.has(x)) { if (st.genres.size === 1) return toast('Mindestens ein Genre.'); st.genres.delete(x); } else st.genres.add(x);
+      c.classList.toggle('on', st.genres.has(x));
+    }));
+    const bindSeg = (id, fn) => $tab.querySelectorAll(`#${id} button`).forEach((b) => (b.onclick = () => {
+      $tab.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle('on', x === b)); fn(b.dataset.v);
+    }));
+    bindSeg('omode', (v) => (st.mode = v));
+    bindSeg('operday', (v) => (st.perDay = +v));
+    bindSeg('ojokers', (v) => (st.options.jokers = +v));
+    bindDiffSeg('odiff', (v) => (st.difficulty = v));
+    $tab.querySelectorAll('[data-opt]').forEach((c) => (c.onchange = () => (st.options[c.dataset.opt] = c.checked)));
+    document.getElementById('optf').onsubmit = async (ev) => {
+      ev.preventDefault();
+      try {
+        const r = await api(`/games/${g.code}/settings`, { method: 'PUT', body: {
+          name: ev.target.name.value, genres: [...st.genres], mode: st.mode, difficulty: st.difficulty, perDay: st.perDay, options: st.options } });
+        toast(r.changes.length ? 'Gespeichert – gilt ab der nächsten Runde' : 'Keine Änderungen');
+        location.hash = `#/g/${g.code}`;
+      } catch (e) { toast(e.message, true); }
+    };
+  }
+
+  // ---------- Training: alleine üben ----------
+  const trainPrefs = () => { try { return JSON.parse(localStorage.getItem('ak_train') || '{}'); } catch (e) { return {}; } };
+  async function startTraining(body) {
+    try {
+      const r = await api('/train', { method: 'POST', body });
+      localStorage.setItem('ak_train', JSON.stringify({ genres: r.settings.genres, difficulty: r.settings.difficulty, count: r.settings.count }));
+      location.hash = `#/training/${r.id}`;
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function viewTraining() {
+    const [s, genres] = await Promise.all([api('/train'), api('/genres')]);
+    const prefs = trainPrefs();
+    const sel = new Set((prefs.genres || []).filter((x) => genres.some((y) => y.name === x)));
+    if (!sel.size) genres.forEach((x) => sel.add(x.name));
+    let difficulty = DIFF[prefs.difficulty] ? prefs.difficulty : 'gemischt';
+    let count = [5, 10, 20].includes(prefs.count) ? prefs.count : 10;
+    const pct = (c, n) => (n ? Math.round((c / n) * 100) : 0);
+    $app.innerHTML = `
+      <div class="spread"><h1>🎓 Training</h1><a href="#/" class="small">Zurück</a></div>
+      <p class="muted" style="margin-top:0">Alleine üben: Jede Antwort wird sofort aufgelöst – mit Erklärung. Keine Punkte, keine Wartezeit, neue Runden so oft du willst.</p>
+      ${s.unfinished ? `<a class="notice" href="#/training/${s.unfinished}" style="color:var(--text)"><span>▶️ <b>Angefangene Runde fortsetzen</b></span><span>›</span></a>` : ''}
+      <div class="card"><div class="kpis">
+        <div class="kpi"><b>${s.answered}</b><span class="small muted">Fragen geübt</span></div>
+        <div class="kpi"><b>${pct(s.correct, s.answered)} %</b><span class="small muted">richtig</span></div>
+        <div class="kpi"><b>${s.streak}</b><span class="small muted">Tage in Folge</span></div>
+        <div class="kpi"><b>${s.seen}/${s.catalog}</b><span class="small muted">Fragen entdeckt</span></div>
+      </div></div>
+      <div class="card">
+        <h2 style="margin-top:0">Neue Runde</h2>
+        <label class="lbl" style="margin-top:0">Genres <a href="#" id="tall" class="small" style="margin-left:6px">alle</a></label>
+        <div class="chips" id="tgenres">${genres.map((x) => `<span class="chip ${sel.has(x.name) ? 'on' : ''}" data-g="${esc(x.name)}">${esc(x.name)}</span>`).join('')}</div>
+        <label class="lbl">Schwierigkeit</label>
+        ${diffSeg('tdiff', difficulty)}
+        <label class="lbl">Anzahl Fragen</label>
+        <div class="seg" id="tcount">${[5, 10, 20].map((n) => `<button type="button" data-n="${n}" class="${n === count ? 'on' : ''}">${n}</button>`).join('')}</div>
+        <button class="btn block" id="tstart" style="margin-top:16px">Runde starten</button>
+        <button class="btn ghost block" id="tmist" style="margin-top:8px" ${s.mistakes ? '' : 'disabled'}>🔁 Fehler wiederholen${s.mistakes ? ` (${s.mistakes})` : ''}</button>
+        <p class="small muted" style="margin:10px 0 0">„Fehler wiederholen“ nimmt Fragen, die du zuletzt falsch hattest – aus dem Training und aus euren Spielrunden. Fragen aus dem Training kommen im Duell erst dran, wenn sonst keine mehr übrig sind.</p>
+      </div>
+      ${s.genres.length ? `<div class="card"><h2 style="margin-top:0">Deine Trefferquote</h2><div class="progress">
+        ${s.genres.map((x) => `<div class="prog"><span style="min-width:110px">${esc(x.name)}</span><span class="bar"><b style="width:${pct(x.c, x.n)}%"></b></span><span class="small muted" style="min-width:70px;text-align:right">${pct(x.c, x.n)} % · ${x.n}</span></div>`).join('')}
+      </div></div>` : ''}`;
+    document.querySelectorAll('#tgenres .chip').forEach((c) => (c.onclick = () => {
+      const x = c.dataset.g;
+      if (sel.has(x)) { if (sel.size === 1) return toast('Mindestens ein Genre.'); sel.delete(x); } else sel.add(x);
+      c.classList.toggle('on', sel.has(x));
+    }));
+    document.getElementById('tall').onclick = (ev) => { ev.preventDefault(); genres.forEach((x) => sel.add(x.name)); document.querySelectorAll('#tgenres .chip').forEach((c) => c.classList.add('on')); };
+    bindDiffSeg('tdiff', (d) => (difficulty = d));
+    document.querySelectorAll('#tcount button').forEach((b) => (b.onclick = () => {
+      count = +b.dataset.n; document.querySelectorAll('#tcount button').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    document.getElementById('tstart').onclick = () => startTraining({ genres: [...sel], difficulty, count, mode: 'neu' });
+    document.getElementById('tmist').onclick = () => startTraining({ genres: [...sel], difficulty, count, mode: 'fehler' });
+  }
+
+  async function viewTrainRound(id, showIdx = null) {
+    const r = await api(`/train/${id}`);
+    const total = r.questions.length;
+    const next = r.questions.findIndex((q) => q.correct === undefined);
+    const cur = showIdx !== null ? showIdx : next;
+    const dots = `<div class="dots">${r.questions.map((q, i) => `<i class="${q.correct === true ? 'ok' : q.correct === false ? 'bad' : i === cur ? 'c' : ''}"></i>`).join('')}</div>`;
+    const head = `<div class="spread"><h1>🎓 Training${r.mode === 'fehler' ? ' <span class="pill">Fehler</span>' : ''}</h1><a href="#/training" class="small">Beenden</a></div>`;
+    const again = () => startTraining({ ...r.settings, mode: r.mode });
+
+    // Rundenende
+    if (cur === -1) {
+      const ok = r.correct;
+      const msg = ok === total ? 'Perfekt! 🏆' : ok / total >= 0.7 ? 'Stark! 💪' : ok / total >= 0.4 ? 'Gut dabei! 👍' : 'Übung macht den Meister 📚';
+      $app.innerHTML = `${head}
+        <div class="card center hero"><div class="big">${ok}/${total}</div><h2>${msg}</h2>
+          <div class="row" style="justify-content:center;margin-top:12px"><button class="btn" id="again">Neue Runde</button><a class="btn ghost" href="#/training">Einstellungen</a></div></div>
+        <div class="card">${r.questions.map((q, i) => `<div class="tiprow"><div class="small muted">${q.correct ? '✅' : '❌'} ${i + 1}. ${esc(q.genre)} ${levelBadge(q.level)}</div><div>${esc(q.q)}</div>
+          <div class="pts">→ ${q.type === 'order' ? q.answer.map((k) => esc(q.items[k])).join(' → ') : esc(q.options[q.answer])}</div></div>`).join('')}</div>`;
+      document.getElementById('again').onclick = again;
+      return;
+    }
+
+    const q = r.questions[cur];
+    const solved = q.correct !== undefined;
+    const qhead = `<div class="qhead"><span>Frage ${cur + 1} von ${total}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>`;
+    let body;
+    if (q.type === 'order') {
+      body = solved
+        ? `<div class="opts">${q.answer.map((k, pos) => `<div class="opt ${q.given[pos] === k ? 'right' : 'wrong'}"><span class="k">${pos + 1}</span><span>${esc(q.items[k])}</span></div>`).join('')}</div>
+           ${q.correct ? '' : `<p class="small muted">Deine Reihenfolge: ${q.given.map((k) => esc(q.items[k])).join(' → ')}</p>`}`
+        : `<p class="small muted" style="margin:0 0 10px">Tippe die Einträge in der richtigen Reihenfolge an.</p>
+          <div class="opts">${q.items.map((it, i) => `<button class="opt ord" data-i="${i}"><span class="k">·</span><span>${esc(it)}</span></button>`).join('')}</div>
+          <div class="row" style="margin-top:12px"><button class="btn ghost small" id="ordreset">Zurücksetzen</button><button class="btn small" id="ordsend" disabled>Antwort abgeben</button></div>`;
+    } else {
+      body = `<div class="opts ${q.type === 'tf' ? 'tf' : ''}">${q.options.map((o, i) => {
+        const cls = !solved ? '' : i === q.answer ? 'right' : i === q.given ? 'wrong' : 'dim';
+        return `<button class="opt ${cls}" data-i="${i}" ${solved ? 'disabled' : ''}>${q.type === 'tf' ? '' : `<span class="k">${KEYS[i]}</span>`}<span>${esc(o)}</span></button>`;
+      }).join('')}</div>`;
+    }
+    const verdict = solved ? `<div class="tverdict ${q.correct ? 'ok' : 'bad'}">${q.correct ? '✅ Richtig!' : '❌ Leider falsch.'}</div>
+      ${q.explain ? `<div class="explain">💡 <b>Wusstest du?</b> ${esc(q.explain)}</div>` : ''}
+      <button class="btn block" id="tnext" style="margin-top:14px">${cur === total - 1 ? 'Ergebnis ansehen' : 'Nächste Frage ›'}</button>` : '';
+    $app.innerHTML = `${head}
+      <div class="card">${dots}${qhead}
+        ${q.image ? `<img class="qimg" src="${esc(q.image)}" alt="Bild zur Frage">` : ''}
+        <div class="qtext">${esc(q.q)}</div>
+        ${body}${verdict}
+      </div>
+      <p class="small muted center">Training zählt nicht fürs Punktekonto. ${r.correct} richtig bisher.</p>`;
+
+    const send = async (payload) => {
+      try { await api(`/train/${id}/answer`, { method: 'POST', body: { idx: cur, ...payload } }); viewTrainRound(id, cur); }
+      catch (e) { toast(e.message, true); viewTrainRound(id); }
+    };
+    if (solved) {
+      document.getElementById('tnext').onclick = () => viewTrainRound(id);
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    if (q.type === 'order') {
+      let picked = [];
+      const btns = [...$app.querySelectorAll('.ord')];
+      const paint = () => {
+        btns.forEach((b) => { const pos = picked.indexOf(+b.dataset.i); b.classList.toggle('picked', pos >= 0); b.querySelector('.k').textContent = pos >= 0 ? pos + 1 : '·'; });
+        document.getElementById('ordsend').disabled = picked.length !== btns.length;
+      };
+      btns.forEach((b) => (b.onclick = () => { const i = +b.dataset.i; if (!picked.includes(i)) picked.push(i); else picked = picked.filter((x) => x !== i); paint(); }));
+      document.getElementById('ordreset').onclick = () => { picked = []; paint(); };
+      document.getElementById('ordsend').onclick = (ev) => { ev.target.disabled = true; send({ order: picked }); };
+    } else {
+      $app.querySelectorAll('.opt').forEach((b) => (b.onclick = () => {
+        $app.querySelectorAll('.opt').forEach((x) => (x.disabled = true));
+        b.classList.add('picked');
+        send({ choice: +b.dataset.i });
+      }));
+    }
   }
 
   // ----- Tab: Statistik -----

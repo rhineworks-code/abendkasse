@@ -349,3 +349,20 @@ a.notice { text-decoration: none; }
 .steps { margin: 10px 0 0 20px; padding: 0; }
 .steps li { margin: 6px 0; }
 .shareico { display: inline-block; border: 1.5px solid var(--me); color: var(--me); border-radius: 5px; font-size: .75rem; padding: 0 5px; margin-left: 4px; }
+
+/* Training */
+.traincard { display: block; color: var(--text); border-color: rgba(122,167,255,.5); background: linear-gradient(135deg, rgba(122,167,255,.12), transparent); margin-bottom: 4px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.kpi { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.kpi b { display: block; font-size: 1.4rem; }
+.dots i.ok { background: var(--ok); }
+.dots i.bad { background: var(--bad); }
+.opt.dim { opacity: .55; }
+.tverdict { margin-top: 14px; font-weight: 700; font-size: 1.1rem; }
+.tverdict.ok { color: var(--ok); }
+.tverdict.bad { color: var(--bad); }
+
+/* Spieloptionen */
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.optrow:last-of-type { border-bottom: 0; }
+.optrow .seg { flex: none; min-width: 150px; }

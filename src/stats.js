@@ -11,7 +11,7 @@ function compute(gameId) {
   const game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
   const players = G().gamePlayers(gameId);
   const days = db.prepare("SELECT * FROM days WHERE game_id = ? AND paid = 1 AND voided = 0 ORDER BY date").all(gameId)
-    .map((d) => ({ ...d, questions: JSON.parse(d.questions).map((q) => ({ type: 'mc', ...q })), duel: d.duel ? JSON.parse(d.duel) : null }));
+    .map((d) => ({ ...d, questions: JSON.parse(d.questions).map((q) => ({ type: 'mc', ...q })), duel: d.duel ? JSON.parse(d.duel) : null, tempoOn: !d.opts || JSON.parse(d.opts).tempo !== false }));
 
   const S = {};
   for (const p of players) {
@@ -47,7 +47,7 @@ function compute(gameId) {
         add((s.genres[q.genre] = s.genres[q.genre] || { n: 0, c: 0 }));
         add(s.levels[q.level || 2]);
         add((s.types[q.type] = s.types[q.type] || { n: 0, c: 0 }));
-        if (ok && a.ms != null && a.ms <= cfg.TEMPO_SECONDS * 1000) s.tempo++;
+        if (ok && d.tempoOn && a.ms != null && a.ms <= cfg.TEMPO_SECONDS * 1000) s.tempo++;
         if (a.stake) { if (ok) { s.stakeWon += a.stake; if (a.stake >= cfg.MAX_STAKE) s.stake30Won++; } else s.stakeLost += a.stake; }
       });
       const r = res[p.id];

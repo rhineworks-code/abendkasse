@@ -111,7 +111,7 @@ app.delete('/api/me/avatar', auth, wrap((req) => { G.clearAvatar(req.player); re
 
 app.post('/api/games', auth, wrap((req) => {
   const name = cleanName(req.body.name, 40) || `${req.player.name}s Quiz`;
-  const g = G.createGame(req.player, { name, genres: req.body.genres, mode: req.body.mode, perDay: req.body.perDay, difficulty: req.body.difficulty });
+  const g = G.createGame(req.player, { name, genres: req.body.genres, mode: req.body.mode, perDay: req.body.perDay, difficulty: req.body.difficulty, options: req.body.options });
   return { code: g.code };
 }));
 
@@ -159,6 +159,8 @@ app.get('/api/games/:code/days/:date', auth, member, wrap((req) => {
 
 app.put('/api/games/:code/settings', auth, member, wrap((req) => G.updateSettings(req.game, req.player, {
   difficulty: req.body.difficulty, themeMode: req.body.themeMode, theme: req.body.theme,
+  name: req.body.name, genres: req.body.genres, mode: req.body.mode, perDay: req.body.perDay,
+  options: req.body.options && typeof req.body.options === 'object' ? req.body.options : undefined,
 })));
 
 // Frage aufdecken (mit Einsatz) und Duell-Frage
@@ -171,6 +173,13 @@ app.get('/api/games/:code/stats', auth, member, wrap((req) => Stats.view(req.gam
 
 // Fragen melden und Meldungen bearbeiten
 app.post('/api/games/:code/report', auth, member, limit(30, 3600_000), wrap((req) => R.report(req.game, req.player, req.body)));
+
+// ---------- Training (alleine üben) ----------
+const Train = require('./training');
+app.get('/api/train', auth, wrap((req) => Train.stats(req.player)));
+app.post('/api/train', auth, limit(120, 3600_000), wrap((req) => Train.start(req.player, req.body)));
+app.get('/api/train/:id', auth, wrap((req) => Train.view(req.player, req.params.id)));
+app.post('/api/train/:id/answer', auth, wrap((req) => Train.answer(req.player, req.params.id, Number(req.body.idx), req.body)));
 
 app.get('/api/games/:code/ledger', auth, member, wrap((req) => G.ledgerOf(req.game.id, req.player.id)));
 
