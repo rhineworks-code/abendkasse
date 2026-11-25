@@ -86,6 +86,44 @@
     });
   }, 1000);
 
+  // ---------- Push ----------
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+  function b64ToBytes(b64) {
+    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  }
+  async function currentSub() {
+    if (!pushSupported()) return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+  async function enablePush() {
+    if (!pushSupported()) throw new Error(isIOS && !standalone ? 'Auf dem iPhone zuerst „Zum Home-Bildschirm“ hinzufügen und von dort öffnen.' : 'Dieser Browser unterstützt hier keine Push-Nachrichten (HTTPS nötig).');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt – das lässt sich in den Browser-Einstellungen ändern.');
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const { key } = await api('/push/key');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+  }
+  async function disablePush() {
+    const sub = await currentSub();
+    if (sub) { await api('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
+  }
+  // Bestehendes Abo dieses Geräts dem angemeldeten Spieler zuordnen (z. B. nach Neuanmeldung)
+  let pushSynced = false;
+  async function syncPush() {
+    if (pushSynced || !token) return; pushSynced = true;
+    try { const sub = await currentSub(); if (sub && Notification.permission === 'granted') await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } }); } catch (e) { /* egal */ }
+  }
+
   // ---------- Router ----------
   window.addEventListener('hashchange', route);
 
@@ -95,7 +133,7 @@
     try {
       if (parts[0] === 'restore') return viewRestore();
       if (!token) return viewWelcome(parts[0] === 'join' ? parts[1] : null);
-      if (!me) { me = await api('/me'); setWho(); }
+      if (!me) { me = await api('/me'); setWho(); syncPush(); }
       if (parts[0] === 'join' && parts[1]) {
         const r = await api('/games/join', { method: 'POST', body: { code: parts[1] } });
         me = null;
@@ -172,12 +210,17 @@
           <button class="btn">Speichern</button>
         </form>
       </div>
+      <div class="card" id="pushcard">
+        <h2 style="margin-top:0">🔔 Benachrichtigungen</h2>
+        <div id="pushbox" class="muted small">Prüfe …</div>
+      </div>
       <div class="card">
         <label class="lbl" style="margin-top:0">Wiederherstellungs-Code (geheim halten!)</label>
         <div class="row"><input class="grow" type="text" readonly value="${esc(token)}"><button class="btn ghost" id="cp">Kopieren</button></div>
         <p class="small muted">Mit diesem Code meldest du dich auf einem anderen Gerät an.</p>
         <div class="row" style="margin-top:14px"><a class="btn ghost" href="#/">Zurück</a><button class="btn ghost" id="lo">Abmelden</button></div>
       </div>`;
+    renderPushBox();
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
     document.getElementById('lo').onclick = () => { if (confirm('Wirklich abmelden? Ohne Code kommst du nicht mehr an dein Konto.')) logout(); };
     document.getElementById('nf').onsubmit = async (ev) => {
@@ -196,6 +239,24 @@
         toast('Profilbild gespeichert'); viewProfile();
       } catch (e) { toast(e.message || 'Bild konnte nicht gelesen werden.', true); }
     };
+  }
+
+  async function renderPushBox() {
+    const box = document.getElementById('pushbox');
+    if (!box) return;
+    const what = '<p class="small muted" style="margin:0 0 12px">Du bekommst eine Nachricht, wenn dein Partner gespielt hat, morgens gegen 6 Uhr bei einer neuen Tagesrunde, bei der Auszahlung um 20 Uhr und wenn eine Extrarunde ansteht.</p>';
+    if (!window.isSecureContext) { box.innerHTML = what + 'Push-Nachrichten funktionieren nur über <b>HTTPS</b> – also über deine externe Adresse (Reverse Proxy), nicht über http://…:8020.'; return; }
+    if (isIOS && !standalone) { box.innerHTML = what + 'Auf dem iPhone/iPad: in Safari auf <b>Teilen → Zum Home-Bildschirm</b> tippen und Abendkasse dann <b>vom Home-Bildschirm</b> öffnen. Danach kannst du hier Push aktivieren (ab iOS 16.4).'; return; }
+    if (!pushSupported()) { box.innerHTML = what + 'Dieser Browser unterstützt keine Push-Nachrichten.'; return; }
+    const sub = await currentSub();
+    const on = !!sub && Notification.permission === 'granted';
+    box.innerHTML = what + (on
+      ? '<p style="margin:0 0 12px">✅ Auf diesem Gerät aktiv.</p><div class="row"><button class="btn small" id="ptest">Test senden</button><button class="btn ghost small" id="poff">Deaktivieren</button></div>'
+      : `${Notification.permission === 'denied' ? '<p style="margin:0 0 12px">Benachrichtigungen sind im Browser blockiert. Erlaube sie in den Website-Einstellungen und versuch es dann erneut.</p>' : ''}<button class="btn" id="pon">Auf diesem Gerät aktivieren</button>`);
+    const on_ = document.getElementById('pon'), off = document.getElementById('poff'), test = document.getElementById('ptest');
+    if (on_) on_.onclick = async () => { try { await enablePush(); toast('Benachrichtigungen aktiviert 🔔'); renderPushBox(); } catch (e) { toast(e.message, true); } };
+    if (off) off.onclick = async () => { await disablePush(); toast('Deaktiviert'); renderPushBox(); };
+    if (test) test.onclick = async () => { try { const r = await api('/push/test', { method: 'POST' }); toast(r.sent ? 'Test gesendet' : 'Kein aktives Gerät gefunden', !r.sent); } catch (e) { toast(e.message, true); } };
   }
 
   // Bild im Browser mittig quadratisch zuschneiden und als JPEG verkleinern
@@ -329,7 +390,7 @@
       ${notices(g)}
 
       <nav class="tabs">
-        <a href="#/g/${code}" class="${tab === 'heute' ? 'on' : ''}">Heute</a>
+        <a href="#/g/${code}" class="${tab === 'heute' || tab === 'extra' ? 'on' : ''}">Heute</a>
         <a href="#/g/${code}/woche" class="${tab === 'woche' || tab === 'tag' ? 'on' : ''}">Woche</a>
         <a href="#/g/${code}/konto" class="${tab === 'konto' ? 'on' : ''}">Konto</a>
       </nav>
@@ -344,6 +405,7 @@
     if (tab === 'woche') return tabWeek($tab, g);
     if (tab === 'konto') return tabLedger($tab, g);
     if (tab === 'tag' && arg) return tabDay($tab, g, arg);
+    if (tab === 'extra' && arg) return tabExtra($tab, g, arg);
     return tabToday($tab, g);
   }
 
@@ -368,6 +430,30 @@
         </div>`);
       }
     }
+    const x = g.extra;
+    if (x) {
+      const nq = g.rules.extraQuestions;
+      if (x.status === 'offer' && !x.accepted) {
+        out.push(`<div class="notice extra">
+          <div>🎲 <b>Lust auf eine Extrarunde?</b>
+          <div class="small muted">Ihr wart beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig. ${nq} Zusatzfragen bis ${hhOf(g)} Uhr – beide müssen zustimmen.</div></div>
+          <div class="row"><button class="btn small" data-extra="1">Ja, los!</button><button class="btn ghost small" data-extra="0">Nein danke</button></div>
+        </div>`);
+      } else if (x.status === 'offer') {
+        out.push(`<div class="notice muted-n"><div>🎲 Du bist bei der Extrarunde dabei. <span class="small muted">Wartet auf ${x.waitingFor.map(esc).join(', ')}.</span></div></div>`);
+      } else if (x.status === 'open' && !x.finished) {
+        out.push(`<div class="notice extra"><div>🎲 <b>Extrarunde läuft</b> <span class="small muted">– ${nq} Fragen bis ${hhOf(g)} Uhr</span></div>
+          <a class="btn small" href="#/g/${g.code}/extra/${x.date}">Jetzt spielen</a></div>`);
+      } else if (x.status === 'declined') {
+        out.push(`<div class="notice muted-n"><div class="small">Keine Extrarunde heute – ${esc(x.declinedBy)} hat abgelehnt.</div></div>`);
+      }
+    }
+    if (!g.push && pushSupported() && !localStorage.getItem('ak_push_later')) {
+      out.push(`<div class="notice muted-n" id="pushask">
+        <div>🔔 <b>Benachrichtigungen aktivieren?</b><div class="small muted">Dann weißt du sofort, wenn dein Partner gespielt hat oder eine Extrarunde ansteht.</div></div>
+        <div class="row"><button class="btn small" id="pushyes">Aktivieren</button><button class="btn ghost small" id="pushno">Später</button></div>
+      </div>`);
+    }
     for (const d of g.days.filter((x) => x.replayOpen)) {
       out.push(`<div class="notice replay">
         <div>🔁 <b>Nachholrunde</b> für ${fmtDate(d.date)} ist offen <span class="small muted">– ${dueText(g, d.due)}</span></div>
@@ -378,6 +464,16 @@
   }
 
   function bindNotices(g) {
+    document.querySelectorAll('[data-extra]').forEach((b) => (b.onclick = async () => {
+      try {
+        const r = await api(`/games/${g.code}/extra`, { method: 'POST', body: { accept: b.dataset.extra === '1' } });
+        toast(r.status === 'started' ? 'Extrarunde startet! 🎲' : r.status === 'declined' ? 'Okay, keine Extrarunde' : 'Zugestimmt – wartet auf deinen Partner');
+        if (r.status === 'started') location.hash = `#/g/${g.code}/extra/${g.today}`; else route();
+      } catch (e) { toast(e.message, true); route(); }
+    }));
+    const py = document.getElementById('pushyes'), pn = document.getElementById('pushno');
+    if (py) py.onclick = async () => { try { await enablePush(); toast('Benachrichtigungen aktiviert 🔔'); route(); } catch (e) { toast(e.message, true); } };
+    if (pn) pn.onclick = () => { localStorage.setItem('ak_push_later', '1'); document.getElementById('pushask')?.remove(); };
     document.querySelectorAll('[data-req]').forEach((b) => (b.onclick = async () => {
       const accept = b.dataset.ok === '1';
       try {
@@ -492,15 +588,18 @@
   }
 
   // Offene Runde spielen. date = null für heute, sonst Datum der Nachholrunde.
-  function renderRound($tab, g, d, date) {
-    const reload = () => (date ? tabDay($tab, g, date) : tabToday($tab, g));
+  function renderRound($tab, g, d, date, kind = 'day') {
+    const isExtra = kind === 'extra';
+    const total = d.questions.length;
+    const reload = () => (isExtra ? tabExtra($tab, g, date) : date ? tabDay($tab, g, date) : tabToday($tab, g));
     const until = Date.now() + d.msUntilPayout;
     const hh = String(d.payoutHour).padStart(2, '0') + ':00';
-    const head = date ? `<div class="notice replay"><div>🔁 <b>Nachholrunde für ${fmtDate(date)}</b> <span class="small muted">– ${dueText(g, d.due)}, danach Auflösung</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur heutigen Runde</a></div>` : '';
-    const total = d.questions.length;
+    const head = isExtra
+      ? `<div class="notice extra"><div>🎲 <b>Extrarunde</b> <span class="small muted">– ${total} Zusatzfragen, Auflösung um ${hh} Uhr</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur Tagesrunde</a></div>`
+      : date ? `<div class="notice replay"><div>🔁 <b>Nachholrunde für ${fmtDate(date)}</b> <span class="small muted">– ${dueText(g, d.due)}, danach Auflösung</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur heutigen Runde</a></div>` : '';
     const next = d.questions.findIndex((q) => q.mine === null);
     const progressHtml = `
-      <div class="card"><h2 style="margin-top:0">Fortschritt ${date ? 'Nachholrunde' : 'heute'}</h2><div class="progress">
+      <div class="card"><h2 style="margin-top:0">Fortschritt ${isExtra ? 'Extrarunde' : date ? 'Nachholrunde' : 'heute'}</h2><div class="progress">
         ${d.progress.map((p) => `<div class="prog">${avatar(p, 26)}<span style="min-width:80px">${esc(p.name)}${p.me ? ' (du)' : ''}</span>
           <span class="bar"><b style="width:${(p.answered / p.total) * 100}%"></b></span><span class="small muted">${p.answered}/${p.total}</span></div>`).join('')}
       </div></div>`;
@@ -510,15 +609,15 @@
         <div class="card center hero">
           <div class="big">🔒</div>
           <h2>Alle ${total} Antworten sind abgegeben</h2>
-          <p class="muted">Die Kasse öffnet ${date && d.due !== g.today ? 'am ' + fmtDate(d.due) + ' ' : ''}um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
-          ${!date || d.due === g.today ? `<div class="countdown" data-until="${until}">--:--:--</div>` : ''}
+          <p class="muted">Die Kasse öffnet ${!isExtra && date && d.due !== g.today ? 'am ' + fmtDate(d.due) + ' ' : ''}um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
+          ${isExtra || !date || d.due === g.today ? `<div class="countdown" data-until="${until}">--:--:--</div>` : ''}
         </div>
         ${progressHtml}
         <div class="card"><h2 style="margin-top:0">Deine Tipps</h2>
           ${d.questions.map((q, i) => `<div style="margin-bottom:10px"><div class="small muted">${i + 1}. ${esc(q.genre)}</div><div>${esc(q.q)}</div><div class="pts">→ ${esc(q.options[q.mine])}</div></div>`).join('')}
         </div>`;
       refreshTimer = setInterval(async () => {
-        try { const x = await api(date ? `/games/${g.code}/days/${date}` : `/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
+        try { const x = await api(isExtra ? `/games/${g.code}/extra/${date}` : date ? `/games/${g.code}/days/${date}` : `/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
       }, 30000);
       return;
     }
@@ -545,8 +644,8 @@
 
     const jb = document.getElementById('joker');
     if (jb) jb.onclick = async () => {
-      if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Tag.')) return;
-      try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { idx: next, date } }); reload(); }
+      if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Runde.')) return;
+      try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { idx: next, date, kind } }); reload(); }
       catch (e) { toast(e.message, true); }
     };
 
@@ -554,8 +653,9 @@
       $tab.querySelectorAll('.opt').forEach((x) => (x.disabled = true));
       b.classList.add('picked');
       try {
-        await api(`/games/${g.code}/answer`, { method: 'POST', body: { idx: next, choice: +b.dataset.i, date } });
-        setTimeout(reload, 350);
+        await api(`/games/${g.code}/answer`, { method: 'POST', body: { idx: next, choice: +b.dataset.i, date, kind } });
+        // Letzte Frage: ganze Ansicht neu laden (Extrarunden-Angebot, Fortschritt des Partners)
+        setTimeout(next === total - 1 ? route : reload, 350);
       } catch (e) { toast(e.message, true); setTimeout(route, 1200); }
     }));
   }
@@ -573,7 +673,7 @@
 
     $tab.innerHTML = `
       <div class="card center hero">
-        <div class="small muted">${isToday ? 'Heutige Auszahlung' : (d.replay ? 'Nachholrunde für ' : 'Auszahlung vom ') + fmtDate(d.date)}</div>
+        <div class="small muted">${d.kind === 'extra' ? '🎲 Extrarunde vom ' + fmtDate(d.date) : isToday ? 'Heutige Auszahlung' : (d.replay ? 'Nachholrunde für ' : 'Auszahlung vom ') + fmtDate(d.date)}</div>
         <div class="row" style="justify-content:center; gap:24px; margin-top:10px">
           ${d.results.map((r) => `
             <div>
@@ -583,7 +683,8 @@
               <div class="pts">${sign(r.points)} P</div>
             </div>`).join('')}
         </div>
-        ${isToday ? '<p class="muted small" style="margin-top:12px">Morgen ab Mitternacht gibt es neue Fragen.</p>' : ''}
+        ${isToday && g.extra && g.extra.status === 'paid' ? `<a class="btn ghost small" style="margin-top:12px" href="#/g/${g.code}/extra/${d.date}">🎲 Extrarunde ansehen</a>` : ''}
+        ${isToday ? '<p class="muted small" style="margin-top:12px">Morgen gibt es neue Fragen.</p>' : ''}
       </div>
       ${d.questions.map((q, i) => {
         const my = mine ? mine.answers[i] : undefined;
@@ -606,6 +707,14 @@
       }).join('')}`;
   }
 
+  async function tabExtra($tab, g, date) {
+    try {
+      const d = await api(`/games/${g.code}/extra/${date}`);
+      if (d.state === 'open') return renderRound($tab, g, d, date, 'extra');
+      renderReveal($tab, g, d, false);
+    } catch (e) { $tab.innerHTML = `<div class="card muted">${esc(e.message)}</div>`; }
+  }
+
   async function tabDay($tab, g, date) {
     try {
       const d = await api(`/games/${g.code}/days/${date}`);
@@ -622,12 +731,12 @@
     for (let i = 0; i < g.week.length; i++) {
       const t = new Date(g.week.start + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + i);
       const date = t.toISOString().slice(0, 10);
-      days.push({ date, n: i + 1, d: g.days.find((x) => x.date === date) });
+      days.push({ date, n: i + 1, d: g.days.find((x) => x.date === date && x.kind !== 'extra'), x: g.days.find((x) => x.date === date && x.kind === 'extra') });
     }
     $tab.innerHTML = `
       <div class="card daylist">
         <h2 style="margin-top:0">Woche ${g.week.no}</h2>
-        ${days.map(({ date, n, d }) => {
+        ${days.map(({ date, n, d, x }) => {
           const res = d && d.voided ? '<span class="muted small">gestrichen</span>' : d && d.paid ? d.results.map((r) => `<span class="small">${esc(byId[r.id]?.name || '?')} <b>${r.correct}/${r.total}</b></span>`).join(' · ') : '';
           const status = !d ? (n < g.week.day ? '<span class="muted small">nicht gespielt</span>' : n === g.week.day ? '<span class="pill">heute</span>' : '<span class="muted small">—</span>')
             : d.paid ? res : d.replayOpen ? '<span class="pill">🔁 Nachholrunde</span>' : '<span class="pill">läuft</span>';
@@ -639,7 +748,9 @@
           const act = canAct ? `<button class="redo" data-act="${date}" title="Tag wiederholen oder streichen">↻</button>`
             : pending ? '<span class="pill">Anfrage offen</span>' : '';
           const link = d && (d.paid || d.replayOpen);
-          return `<div class="drow">${link ? `<a class="d" href="#/g/${g.code}/tag/${date}">${inner}</a>` : `<div class="d">${inner}</div>`}${act}</div>`;
+          const extraRow = x ? `<a class="drow extra-row" href="#/g/${g.code}/extra/${date}"><span class="d small"><span>🎲 Extrarunde</span><span>${x.paid
+            ? x.results.map((r) => `${esc(byId[r.id]?.name || '?')} <b>${r.correct}/${r.total}</b>`).join(' · ') : '<span class="pill">läuft</span>'}</span></span></a>` : '';
+          return `<div class="drow">${link ? `<a class="d" href="#/g/${g.code}/tag/${date}">${inner}</a>` : `<div class="d">${inner}</div>`}${act}</div>${extraRow}`;
         }).join('')}
       </div>
 
@@ -653,6 +764,7 @@
         <b style="color:var(--text)">Regeln:</b> ${g.rules.perCorrect} P pro richtige Antwort · +${g.rules.perfectBonus} P für einen perfekten Tag ·
         +${g.rules.weekBonus} P für den Wochensieg · ein 50:50-Joker pro Tag · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
         Mit ↻ lässt sich ein vergangener Tag dieser Woche wiederholen oder streichen, wenn alle zustimmen.
+        Seid ihr beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig, gibt es auf Wunsch eine Extrarunde mit ${g.rules.extraQuestions} Fragen.
         Genres: ${g.genres.map(esc).join(', ')} (${g.mode === 'daily' ? 'ein Genre pro Tag' : 'gemischt'}, ${g.perDay} Fragen/Tag).
       </div>
 
@@ -668,7 +780,7 @@
       catch (e) { toast(e.message, true); }
     });
     $tab.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () =>
-      openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act))));
+      openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act && x.kind !== 'extra'))));
   }
 
   // ----- Tab: Konto -----

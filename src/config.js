@@ -18,6 +18,11 @@ module.exports = {
   MAX_PLAYERS: int(process.env.MAX_PLAYERS, 2),
 
   PUBLIC_URL: process.env.PUBLIC_URL || '',             // z. B. https://quiz.deinedomain.de – für Einladungslinks
+  MORNING_HOUR: int(process.env.MORNING_HOUR, 6),       // Push „Neue Tagesrunde“ ab dieser Stunde
+  EXTRA_BEFORE_HOUR: int(process.env.EXTRA_BEFORE_HOUR, 15), // Extrarunde, wenn alle vor dieser Stunde fertig sind
+  EXTRA_QUESTIONS: int(process.env.EXTRA_QUESTIONS, 5),
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:abendkasse@example.com',
+
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || '',
   WEBHOOK_URL: process.env.WEBHOOK_URL || '',           // optional: z. B. Home-Assistant-Webhook
 };

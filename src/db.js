@@ -42,11 +42,16 @@ CREATE TABLE IF NOT EXISTS days (
   id INTEGER PRIMARY KEY,
   game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
   date TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'day', -- day = Tagesrunde, extra = Extrarunde
   week_no INTEGER NOT NULL,
   genre TEXT,                       -- Tagesgenre (nur im Modus daily)
   questions TEXT NOT NULL,          -- JSON-Snapshot inkl. Lösung
   paid INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (game_id, date)
+  due_date TEXT,                    -- Auszahlungstag (Nachholrunde: später als date)
+  replay INTEGER NOT NULL DEFAULT 0,
+  voided INTEGER NOT NULL DEFAULT 0,
+  history TEXT,
+  UNIQUE (game_id, date, kind)
 );
 
 CREATE TABLE IF NOT EXISTS answers (
@@ -105,6 +110,30 @@ CREATE TABLE IF NOT EXISTS day_requests (
   PRIMARY KEY (game_id, date)
 );
 
+-- Extrarunde: Angebot und Zustimmungen pro Spiel und Tag
+CREATE TABLE IF NOT EXISTS extra_offers (
+  game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  data TEXT NOT NULL,               -- JSON {ok:[playerId], declinedBy}
+  PRIMARY KEY (game_id, date)
+);
+
+-- Push-Abos (ein Eintrag pro Gerät/Browser)
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint TEXT PRIMARY KEY,
+  player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Merkt sich, welche Benachrichtigungen schon verschickt wurden (z. B. Morgen-Push)
+CREATE TABLE IF NOT EXISTS notify_log (
+  game_id INTEGER,
+  key TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (game_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS used_questions (
   game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
   qid TEXT NOT NULL,
@@ -123,6 +152,34 @@ if (!dcols.includes('due_date')) db.exec('ALTER TABLE days ADD COLUMN due_date T
 if (!dcols.includes('replay')) db.exec('ALTER TABLE days ADD COLUMN replay INTEGER NOT NULL DEFAULT 0'); // wie oft wiederholt
 if (!dcols.includes('voided')) db.exec('ALTER TABLE days ADD COLUMN voided INTEGER NOT NULL DEFAULT 0'); // gestrichen
 if (!dcols.includes('history')) db.exec('ALTER TABLE days ADD COLUMN history TEXT');          // frühere Versuche (JSON)
+
+// Extrarunde: days braucht die Spalte kind und einen neuen eindeutigen Schlüssel -> Tabelle umbauen
+if (!db.prepare('PRAGMA table_info(days)').all().some((c) => c.name === 'kind')) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`BEGIN;
+    CREATE TABLE days_new (
+  id INTEGER PRIMARY KEY,
+  game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'day', -- day = Tagesrunde, extra = Extrarunde
+  week_no INTEGER NOT NULL,
+  genre TEXT,                       -- Tagesgenre (nur im Modus daily)
+  questions TEXT NOT NULL,          -- JSON-Snapshot inkl. Lösung
+  paid INTEGER NOT NULL DEFAULT 0,
+  due_date TEXT,                    -- Auszahlungstag (Nachholrunde: später als date)
+  replay INTEGER NOT NULL DEFAULT 0,
+  voided INTEGER NOT NULL DEFAULT 0,
+  history TEXT,
+  UNIQUE (game_id, date, kind)
+);
+    INSERT INTO days_new (id, game_id, date, week_no, genre, questions, paid, due_date, replay, voided, history)
+      SELECT id, game_id, date, week_no, genre, questions, paid, due_date, replay, voided, history FROM days;
+    DROP TABLE days;
+    ALTER TABLE days_new RENAME TO days;
+    COMMIT;`);
+  db.exec('PRAGMA foreign_keys = ON');
+  console.log('[DB] Tabelle days für Extrarunden umgebaut');
+}
 
 function tx(fn) {
   db.exec('BEGIN');

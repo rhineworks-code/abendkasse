@@ -3,6 +3,7 @@ const express = require('express');
 const cfg = require('./config');
 const G = require('./game');
 const Q = require('./questions');
+const P = require('./push');
 
 const app = express();
 app.set('trust proxy', true); // hinter Reverse Proxy (NPM, Traefik, Caddy …)
@@ -76,6 +77,15 @@ app.post('/api/players', limit(10, 3600_000), wrap((req) => {
   return G.createPlayer(name);
 }));
 
+// ---------- Push ----------
+app.get('/api/push/key', (req, res) => res.json({ key: P.publicKey() }));
+app.post('/api/push/subscribe', auth, limit(30, 3600_000), wrap((req) => { P.subscribe(req.player, req.body.subscription); return { ok: true }; }));
+app.post('/api/push/unsubscribe', auth, wrap((req) => { P.unsubscribe(req.player, req.body.endpoint); return { ok: true }; }));
+app.post('/api/push/test', auth, limit(10, 600_000), async (req, res) => {
+  const sent = await P.sendTo([req.player.id], { title: 'Abendkasse 🔔', body: 'Push-Benachrichtigungen funktionieren!', url: '/', tag: 'test' });
+  res.json({ sent });
+});
+
 app.get('/api/me', auth, wrap((req) => ({
   id: req.player.id, name: req.player.name, avatar: req.player.avatar, games: G.gamesOfPlayer(req.player.id),
 })));
@@ -109,11 +119,20 @@ app.get('/api/games/:code/today', auth, member, wrap((req) => {
 }));
 
 app.post('/api/games/:code/answer', auth, member, wrap((req) => {
-  const mine = G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice), req.body.date);
+  const mine = G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice), req.body.date, req.body.kind === 'extra' ? 'extra' : 'day');
   return { ok: true, answered: Object.keys(mine).length };
 }));
 
-app.post('/api/games/:code/joker', auth, member, wrap((req) => G.useJoker(req.game, req.player, Number(req.body.idx), req.body.date)));
+app.post('/api/games/:code/joker', auth, member, wrap((req) => G.useJoker(req.game, req.player, Number(req.body.idx), req.body.date, req.body.kind === 'extra' ? 'extra' : 'day')));
+
+// Extrarunde: zustimmen / ablehnen, ansehen
+app.post('/api/games/:code/extra', auth, member, wrap((req) => G.answerExtra(req.game, req.player, !!req.body.accept)));
+app.get('/api/games/:code/extra/:date', auth, member, wrap((req) => {
+  const v = G.dayView(req.game, req.player, req.params.date, null, 'extra');
+  if (v.state === 'none') throw G.httpError(404, 'An diesem Tag gab es keine Extrarunde.');
+  if (v.state !== 'paid' && v.state !== 'open') throw G.httpError(403, `Die Auflösung gibt es erst um ${cfg.PAYOUT_HOUR}:00 Uhr.`);
+  return v;
+}));
 
 // Tag wiederholen / streichen: Anfrage stellen, zustimmen oder ablehnen
 app.post('/api/games/:code/days/:date/request', auth, member, wrap((req) =>
@@ -148,7 +167,10 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Unbekannter Endpunk
 
 app.use('/avatars', express.static(G.AVATAR_DIR, { maxAge: '30d', immutable: true, fallthrough: false }));
 
-app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: 'index.html' }));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  maxAge: '1h', index: 'index.html',
+  setHeaders: (res, file) => { if (/(sw\.js|index\.html|manifest\.webmanifest)$/.test(file)) res.set('Cache-Control', 'no-cache'); },
+}));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 // ---------- Start ----------

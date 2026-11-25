@@ -232,3 +232,8 @@ label.lbl { display: block; font-size: .85rem; color: var(--muted); margin: 12px
 .lvl.l2 { color: var(--gold); }
 .lvl.l3 { color: var(--bad); }
 .seg button { font-size: .9rem; padding: 9px 4px; }
+
+/* Extrarunde */
+.notice.extra { background: rgba(255,143,208,.10); border-color: rgba(255,143,208,.55); }
+.drow.extra-row { border-bottom: 1px solid var(--line); color: var(--text); }
+.drow.extra-row .d { padding: 6px 0 10px 18px; display: flex; justify-content: space-between; color: var(--muted); }

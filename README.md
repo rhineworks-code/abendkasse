@@ -34,6 +34,17 @@ Lokal bauen statt pullen: in der `docker-compose.yml` `image:` auskommentieren, 
 4. Um 20:00 Uhr kommt die Auflösung: Du siehst, wer was getippt hat, und die Punkte werden gebucht.
 5. Nach Tag 7 wird die Woche abgeschlossen. Der Sieger bekommt den Wochenbonus, bei Gleichstand beide.
 
+**Push-Benachrichtigungen:** Unter **Profil → Benachrichtigungen** pro Gerät aktivieren. Du bekommst eine Nachricht, wenn
+- dein Partner seine Runde gespielt hat (oder ihr beide fertig seid),
+- morgens ab 6 Uhr eine neue Tagesrunde wartet (nur an die, die noch nicht gespielt haben),
+- um 20 Uhr ausgezahlt wird (eine Nachricht mit allen Ergebnissen),
+- eine Extrarunde angeboten wird, dein Partner zugestimmt hat oder sie startet,
+- jemand einen Tag wiederholen oder streichen möchte.
+
+Push funktioniert nur über **HTTPS** (Reverse Proxy). Auf dem **iPhone** (ab iOS 16.4) muss Abendkasse zuerst über Safari → Teilen → **Zum Home-Bildschirm** hinzugefügt und von dort geöffnet werden. Android und Desktop-Browser funktionieren direkt. Die Schlüssel für den Versand (VAPID) werden beim ersten Start automatisch in `data/vapid.json` erzeugt. Diese Datei gehört zur Datensicherung: Geht sie verloren, muss jeder Push neu aktivieren.
+
+**Extrarunde:** Habt ihr beide eure Tagesrunde **vor 15 Uhr** gespielt, wird eine Extrarunde mit **5 Zusatzfragen** angeboten (oben im Spiel und per Push). Erst wenn **beide zustimmen**, geht es los. Die Extrarunde läuft bis 20 Uhr, wird zusammen mit der Tagesrunde ausgezahlt und zählt für die Woche. Lehnt einer ab, gibt es an diesem Tag keine Extrarunde.
+
 **Schwierigkeit:** Jede Frage hat eine Stufe (●○○ leicht, ●●○ mittel, ●●● schwer). Pro Spiel wählst du:
 - **Leicht:** nur leichte Fragen
 - **Mittel** (Standard): leichte und mittlere Fragen, keine schweren
@@ -57,6 +68,10 @@ Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der C
 | Variable | Standard | Bedeutung |
 |---|---|---|
 | `HOST_PORT` | 8020 | Port auf dem Server |
+| `MORNING_HOUR` | 6 | Ab dieser Stunde kommt der Push „Neue Tagesrunde“ |
+| `EXTRA_BEFORE_HOUR` | 15 | Extrarunde, wenn alle vor dieser Stunde fertig sind |
+| `EXTRA_QUESTIONS` | 5 | Fragen in der Extrarunde |
+| `VAPID_SUBJECT` | mailto:abendkasse@example.com | Absenderangabe für Web-Push (beliebige Mail- oder https-Adresse) |
 | `PAYOUT_HOUR` | 20 | Stunde der Auszahlung |
 | `OPEN_HOUR` | 0 | Ab dieser Stunde sind die Tagesfragen offen |
 | `QUESTIONS_PER_DAY` | 10 | Vorgabe für neue Spiele |
