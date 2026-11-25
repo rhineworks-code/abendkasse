@@ -25,7 +25,7 @@ module.exports = {
 
   MAX_STAKE: int(process.env.MAX_STAKE, 30),             // Einsatz pro Frage: 0 bis MAX_STAKE
   STAKE_STEP: int(process.env.STAKE_STEP, 10),
-  TEMPO_SECONDS: int(process.env.TEMPO_SECONDS, 5),     // richtig innerhalb dieser Zeit -> Tempo-Bonus
+  TEMPO_SECONDS: int(process.env.TEMPO_SECONDS, 10),     // richtig innerhalb dieser Zeit -> Tempo-Bonus
   TEMPO_BONUS: int(process.env.TEMPO_BONUS, 2),
   DUEL_POINTS: int(process.env.DUEL_POINTS, 20),         // Duell-Frage: wer näher dran ist
   REMINDER_HOUR: int(process.env.REMINDER_HOUR, 18),     // Erinnerung, falls noch nicht gespielt

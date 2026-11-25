@@ -69,7 +69,7 @@ Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage ersche
 
 **Einsatz pro Frage:** Vor jeder Frage siehst du nur Genre, Stufe und Fragetyp und setzt **0, 10, 20 oder 30 Punkte**. Richtig: Einsatz gewonnen, falsch: Einsatz verloren. Gesetzt werden kann nur, was auf dem Konto frei ist (Kontostand minus noch offene Einsätze).
 
-**Tempo-Bonus:** Mit dem Aufdecken startet die Uhr. Wer innerhalb von **5 Sekunden** richtig antwortet, bekommt **+2 Punkte**. Die Zeit misst der Server. Die Frage wird erst beim Aufdecken übertragen, Googeln lohnt sich also nicht.
+**Tempo-Bonus:** Mit dem Aufdecken startet die Uhr. Wer innerhalb von **10 Sekunden** richtig antwortet, bekommt **+2 Punkte**. Die Zeit misst der Server. Die Frage wird erst beim Aufdecken übertragen, Googeln lohnt sich also nicht.
 
 **Duell-Frage des Tages:** Nach den Tagesfragen kommt eine **Schätzfrage** (z. B. „Wie hoch ist der Kölner Dom?“). Wer näher an der richtigen Zahl liegt, bekommt **20 Punkte**, bei Gleichstand bekommt jeder 10.
 
@@ -89,7 +89,7 @@ Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage ersche
 
 **Darstellung:** Unter **Profil → Darstellung** stellst du Hell, Dunkel oder Automatisch (nach Systemeinstellung) ein, außerdem die Schriftgröße Normal, Groß oder Sehr groß. Das gilt pro Gerät.
 
-**Punkte (Standard):** 10 pro richtige Antwort · +20 für eine perfekte Runde · +2 Tempo-Bonus · ±Einsatz · +20 für die Duell-Frage · +100 für den Wochensieg. Im Konto ist jede Buchung einzeln aufgeschlüsselt.
+**Punkte (Standard):** 10 pro richtige Antwort · +20 für eine perfekte Runde · +2 Tempo-Bonus (unter 10 s) · ±Einsatz · +20 für die Duell-Frage · +100 für den Wochensieg. Im Konto ist jede Buchung einzeln aufgeschlüsselt.
 
 Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der Container um 20 Uhr nicht, wird die Auszahlung beim nächsten Start nachgeholt.
 
@@ -102,7 +102,7 @@ Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der C
 | `EXTRA_BEFORE_HOUR` | 15 | Extrarunde, wenn alle vor dieser Stunde fertig sind |
 | `EXTRA_QUESTIONS` | 5 | Fragen in der Extrarunde |
 | `MAX_STAKE` / `STAKE_STEP` | 30 / 10 | Höchsteinsatz pro Frage und Schrittweite |
-| `TEMPO_SECONDS` / `TEMPO_BONUS` | 5 / 2 | Tempo-Bonus: Zeitgrenze und Punkte |
+| `TEMPO_SECONDS` / `TEMPO_BONUS` | 10 / 2 | Tempo-Bonus: Zeitgrenze und Punkte |
 | `DUEL_POINTS` | 20 | Punkte für die beste Schätzung |
 | `REMINDER_HOUR` | 18 | Erinnerungs-Push, falls noch nicht gespielt |
 | `BACKUP_PATH` | ./backups/auto | Zielordner der nächtlichen Sicherung auf dem Server |

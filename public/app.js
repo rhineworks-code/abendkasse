@@ -99,7 +99,10 @@
 
   // ---------- Push ----------
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const standalone = ['standalone', 'fullscreen', 'minimal-ui'].some((m) => window.matchMedia(`(display-mode: ${m})`).matches)
+    || navigator.standalone === true
+    || (isIOS && /AppleWebKit/.test(navigator.userAgent) && !/Safari\//.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent));
+  if (standalone) { try { localStorage.setItem('ak_installed', '1'); } catch (e) { /* egal */ } }
   const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
   if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
