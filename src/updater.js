@@ -9,7 +9,7 @@ let latest = null;   // { sha, date, message, changes, behind, checkedAt }
 let lastError = null;
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
-const managers = () => db.prepare('SELECT DISTINCT owner_id AS id FROM games WHERE owner_id IS NOT NULL').all().map((r) => r.id);
+const managers = () => db.prepare('SELECT id FROM players WHERE is_admin = 1').all().map((r) => r.id);
 const configured = () => !!(cfg.UPDATE_URL && cfg.UPDATE_TOKEN);
 const available = () => !!latest && current.sha !== 'dev' && latest.sha !== current.sha;
 

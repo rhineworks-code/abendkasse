@@ -50,7 +50,9 @@ const freshStart = (n) => (isAfterPayout(n) ? T.addDays(n.date, 1) : n.date);
 
 function createPlayer(name) {
   const token = crypto.randomBytes(24).toString('hex');
-  const r = db.prepare('INSERT INTO players (name, token) VALUES (?, ?)').run(name, token);
+  // Der allererste Spieler einer Installation wird Admin
+  const admin = db.prepare('SELECT 1 FROM players WHERE is_admin = 1').get() ? 0 : 1;
+  const r = db.prepare('INSERT INTO players (name, token, is_admin) VALUES (?, ?, ?)').run(name, token, admin);
   return { id: Number(r.lastInsertRowid), name, token };
 }
 

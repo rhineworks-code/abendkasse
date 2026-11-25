@@ -56,11 +56,11 @@ h2 { font-size: 1.15rem; margin: 26px 0 10px; }
 .grow { flex: 1; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 
-input[type=text], select {
+input[type=text], input[type=password], select {
   width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
   background: var(--bg); color: var(--text); font-size: 1rem; outline: none;
 }
-input[type=text]:focus, select:focus { border-color: var(--gold); }
+input[type=text]:focus, input[type=password]:focus, select:focus { border-color: var(--gold); }
 input.code { text-transform: uppercase; letter-spacing: 4px; font-weight: 700; text-align: center; }
 label.lbl { display: block; font-size: .85rem; color: var(--muted); margin: 12px 0 6px; }
 

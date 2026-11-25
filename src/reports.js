@@ -26,7 +26,8 @@ function report(game, player, { date, kind, idx, reason, comment }) {
   return { ok: true };
 }
 
-const canManage = (player) => !!db.prepare('SELECT 1 FROM games WHERE owner_id = ?').get(player.id);
+// Katalog-Korrekturen gelten für alle Spiele -> nur Admins
+const canManage = (player) => !!db.prepare('SELECT is_admin FROM players WHERE id = ?').get(player.id)?.is_admin;
 
 // Trefferquote einer Frage über alle Runden aller Spiele
 function questionStats(qids) {
@@ -49,7 +50,7 @@ function questionStats(qids) {
 }
 
 function list(player, status = 'open') {
-  if (!canManage(player)) throw httpError(403, 'Nur Spielleiter können Meldungen bearbeiten.');
+  if (!canManage(player)) throw httpError(403, 'Nur Admins können Meldungen bearbeiten.');
   const rows = db.prepare(`SELECT r.*, p.name AS player_name FROM reports r LEFT JOIN players p ON p.id = r.player_id
     WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 300`).all(status);
   const byQ = {};
@@ -70,7 +71,7 @@ function list(player, status = 'open') {
 
 // Stufe ändern / Frage deaktivieren / Meldungen erledigen
 function resolve(player, qid, { level, disabled, dismiss }) {
-  if (!canManage(player)) throw httpError(403, 'Nur Spielleiter können Meldungen bearbeiten.');
+  if (!canManage(player)) throw httpError(403, 'Nur Admins können Meldungen bearbeiten.');
   if (level !== undefined || disabled !== undefined) {
     const cur = db.prepare('SELECT * FROM question_overrides WHERE qid = ?').get(qid) || { level: null, disabled: 0 };
     const lv = level !== undefined ? (level ? Math.min(3, Math.max(1, Number(level))) : null) : cur.level;

@@ -15,7 +15,7 @@ Danach läuft das Spiel unter `http://<server>:8020` (Port über `HOST_PORT` in 
 
 ## Update
 
-**Aus der App (empfohlen):** Gibt es eine neue Version, sehen Spielleiter oben den Hinweis **„⬆️ Update verfügbar“** mit der Liste der Änderungen (und bekommen einen Push). **„Jetzt einspielen“** legt automatisch eine Sicherung an, lädt das neue Image und startet Abendkasse neu. Nach etwa einer Minute lädt die Seite von selbst neu. Unter **Profil → Version & Updates** stehen die installierte und die neueste Version, dazu der Knopf „Nach Updates suchen“. Die App prüft alle 6 Stunden auf GitHub, ob ein neues Image **fertig gebaut** ist.
+**Aus der App (empfohlen):** Gibt es eine neue Version, sehen Admins oben den Hinweis **„⬆️ Update verfügbar“** mit der Liste der Änderungen (und bekommen einen Push). **„Jetzt einspielen“** legt automatisch eine Sicherung an, lädt das neue Image und startet Abendkasse neu. Nach etwa einer Minute lädt die Seite von selbst neu. Unter **Profil → Version & Updates** stehen die installierte und die neueste Version, dazu der Knopf „Nach Updates suchen“. Die App prüft alle 6 Stunden auf GitHub, ob ein neues Image **fertig gebaut** ist.
 
 So funktioniert's: In der `docker-compose.yml` läuft neben der App ein kleiner **Updater** (Watchtower, gepflegter Fork `nicholas-fedor/watchtower`). Nur er hat Zugriff auf Docker, er hat keinen Port nach außen und aktualisiert ausschließlich Abendkasse. Die App stößt ihn über das geheime `UPDATE_TOKEN` an. Das Token erzeugt `update.sh` beim ersten Lauf automatisch in der `.env`.
 
@@ -79,7 +79,7 @@ Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage ersche
 
 **Themenwoche:** Unter **Woche → Themenwoche** einschalten. Dann dreht sich eine ganze Woche um ein Genre. Der **Wochensieger wählt das Thema der nächsten Woche** und bekommt dazu eine Push-Nachricht. Wählt niemand bis zur ersten Runde der neuen Woche, entscheidet der Zufall. Bei 10 Fragen am Tag kann sich innerhalb einer Themenwoche eine Frage wiederholen, weil ein Genre nur rund 70 Fragen hat.
 
-**Fragen melden:** In der Auflösung hat jede Frage einen Knopf **⚑ Melden** (Antwort falsch, zu schwer, zu leicht, unklar, Sonstiges). Spielleiter sehen in der Übersicht **„Gemeldete Fragen“** mit der bisherigen Trefferquote der Frage und können die **Stufe ändern** oder die Frage **aussortieren**. Das gilt sofort. Falsche Antworten korrigiert man dauerhaft in der JSON-Datei.
+**Fragen melden:** In der Auflösung hat jede Frage einen Knopf **⚑ Melden** (Antwort falsch, zu schwer, zu leicht, unklar, Sonstiges). Admins sehen in der Übersicht **„Gemeldete Fragen“** mit der bisherigen Trefferquote der Frage und können die **Stufe ändern** oder die Frage **aussortieren**. Das gilt sofort. Falsche Antworten korrigiert man dauerhaft in der JSON-Datei.
 
 **Statistik & Abzeichen:** Im Tab **Statistik** stehen Trefferquote gesamt, pro Genre, Stufe und Fragetyp, Wochen- und Tagessiege im direkten Vergleich, aktuelle und längste Serie, Duelle, Tempo-Boni, Einsätze und Punkte pro Woche. Dazu gibt es Hinweise wie „Du bist in Geschichte stärker als Sarah“ und 23 **Abzeichen** (Perfekter Tag, 5 Wochensiege, 7 Tage am Stück, 50 richtige pro Genre, Hellseher, Zocker …). Neue Abzeichen werden nach der Auszahlung per Push gemeldet.
 
@@ -159,6 +159,19 @@ Neben Multiple Choice gehen auch diese Typen (als Objekt):
 - `estimate`: Schätzfragen kommen als **Duell-Frage des Tages** dran.
 - Bilder für eigene Bildfragen in `data/questions/bilder/` ablegen und als `"/eigene/dateiname.jpg"` angeben.
 - Bei Multiple Choice ist die Erklärung der optionale 7. Wert: `["Frage", "richtig", "f1", "f2", "f3", 2, "Wusstest du …"]`.
+
+## Admins
+
+Nur **Admins** sehen Update-Hinweise, können Updates einspielen und verwalten gemeldete Fragen. Fragen melden kann jeder. Der **zuerst registrierte Spieler** ist automatisch Admin. Unter **Profil → Admin** schaltet ein Admin andere Spieler frei oder entfernt sie wieder. Mindestens ein Admin bleibt immer.
+
+Rettungswege, falls kein Admin mehr Zugriff hat:
+- Im Profil unter **Admin-Zugang** das `ADMIN_TOKEN` aus der `.env` eingeben. Das funktioniert nur, wenn eins gesetzt ist.
+- Per Kommandozeile auf dem Server:
+  ```bash
+  docker exec -u node abendkasse node src/cli.js admins          # Spieler und Admins anzeigen
+  docker exec -u node abendkasse node src/cli.js admin "Alex"    # Alex zum Admin machen
+  docker exec -u node abendkasse node src/cli.js kein-admin "Sarah"
+  ```
 
 ## Datensicherung (z. B. auf die Synology)
 

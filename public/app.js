@@ -380,6 +380,7 @@
         <label class="lbl">Schriftgröße</label>
         <div class="seg" id="ftseg">${[['normal', 'Normal'], ['large', 'Groß'], ['xlarge', 'Sehr groß']].map(([k, v]) => `<button type="button" data-f="${k}" class="${(localStorage.getItem('ak_font') || 'normal') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
       </div>
+      ${me.isAdmin || me.adminClaimable ? `<div class="card"><h2 style="margin-top:0">🛡️ Admin${me.isAdmin ? '' : '-Zugang'}</h2><div id="adminbox"></div></div>` : ''}
       ${me.canManage ? '<div class="card" id="updcard"><h2 style="margin-top:0">⬆️ Version & Updates</h2><div id="updbox" class="small muted">Prüfe …</div></div>' : ''}
       <div class="card" id="pushcard">
         <h2 style="margin-top:0">🔔 Benachrichtigungen</h2>
@@ -394,6 +395,7 @@
     renderPushBox();
     renderUpdateBox();
     renderInstallBox();
+    renderAdminBox();
     document.querySelectorAll('#thseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_theme', b.dataset.t); applyLook(); viewProfile(); }));
     document.querySelectorAll('#ftseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_font', b.dataset.f); applyLook(); viewProfile(); }));
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
@@ -414,6 +416,34 @@
         toast('Profilbild gespeichert'); viewProfile();
       } catch (e) { toast(e.message || 'Bild konnte nicht gelesen werden.', true); }
     };
+  }
+
+  async function renderAdminBox() {
+    const box = document.getElementById('adminbox');
+    if (!box) return;
+    if (!me.isAdmin) {
+      box.innerHTML = `<p class="small muted" style="margin:0 0 10px">Admins sehen Updates und verwalten gemeldete Fragen. Mit dem <code>ADMIN_TOKEN</code> aus der <code>.env</code> kannst du dich selbst freischalten.</p>
+        <form id="claimf" class="row"><input class="grow" type="password" name="t" placeholder="ADMIN_TOKEN" autocomplete="off" required><button class="btn ghost small">Freischalten</button></form>`;
+      document.getElementById('claimf').onsubmit = async (ev) => {
+        ev.preventDefault();
+        try { await api('/admin-claim', { method: 'POST', body: { token: ev.target.t.value } }); toast('Du bist jetzt Admin 🛡️'); me = null; upd = null; route(); }
+        catch (e) { toast(e.message, true); }
+      };
+      return;
+    }
+    const list = await api('/admins');
+    box.innerHTML = `<p class="small muted" style="margin:0 0 10px">Admins sehen Update-Hinweise, können Updates einspielen und gemeldete Fragen bearbeiten.</p>
+      ${list.map((p) => `<div class="prog" style="padding:6px 0">${avatar(p, 26)}<span class="grow">${esc(p.name)}${p.id === me.id ? ' <span class="small muted">(du)</span>' : ''}</span>
+        <label class="switch"><input type="checkbox" data-adm="${p.id}" ${p.admin ? 'checked' : ''}><span></span></label></div>`).join('')}`;
+    box.querySelectorAll('[data-adm]').forEach((c) => (c.onchange = async () => {
+      const id = +c.dataset.adm;
+      if (!c.checked && id === me.id && !confirm('Dir selbst die Admin-Rechte entziehen?')) { c.checked = true; return; }
+      try {
+        await api(`/admins/${id}`, { method: 'POST', body: { admin: c.checked } });
+        toast(c.checked ? 'Admin hinzugefügt' : 'Admin entfernt');
+        if (id === me.id) { me = null; upd = null; route(); }
+      } catch (e) { toast(e.message, true); c.checked = !c.checked; }
+    }));
   }
 
   async function renderUpdateBox(force = false) {
