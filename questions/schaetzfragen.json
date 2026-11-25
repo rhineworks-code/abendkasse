@@ -1,0 +1,77 @@
+{
+  "Allgemeinwissen": [
+    {"type": "estimate", "q": "Wie viele Sekunden hat ein Tag?", "answer": 86400, "unit": "Sekunden", "explain": "24 × 60 × 60 = 86.400 Sekunden."},
+    {"type": "estimate", "q": "Wie viele Länder sind Mitglied der Vereinten Nationen?", "answer": 193, "unit": "Länder", "explain": "Jüngstes Mitglied ist seit 2011 der Südsudan."},
+    {"type": "estimate", "q": "Wie viel wiegt eine 1-Euro-Münze?", "answer": 7.5, "unit": "Gramm", "explain": "Die 2-Euro-Münze wiegt 8,5 Gramm."},
+    {"type": "estimate", "q": "Wie viele Felder hat ein Monopoly-Spielbrett?", "answer": 40, "unit": "Felder", "explain": "Inklusive Los, Gefängnis, Frei Parken und „Gehe ins Gefängnis“."},
+    {"type": "estimate", "q": "Wie viele Karten hat ein Pokerblatt ohne Joker?", "answer": 52, "unit": "Karten", "explain": "Vier Farben mit je 13 Karten."},
+    {"type": "estimate", "q": "Wie viele Sterne hat die Flagge der USA?", "answer": 50, "unit": "Sterne", "explain": "Ein Stern pro Bundesstaat."},
+    {"type": "estimate", "q": "Wie viele Sterne hat die Europaflagge?", "answer": 12, "unit": "Sterne", "explain": "Die Zwölf steht für Vollkommenheit – nicht für die Zahl der Mitglieder."},
+    {"type": "estimate", "q": "Wie alt wurde Johann Wolfgang von Goethe?", "answer": 82, "unit": "Jahre", "explain": "Goethe lebte von 1749 bis 1832."}
+  ],
+  "Geografie": [
+    {"type": "estimate", "q": "Wie hoch ist die Zugspitze?", "answer": 2962, "unit": "Meter", "explain": "Die Zugspitze ist Deutschlands höchster Berg."},
+    {"type": "estimate", "q": "Wie hoch ist der Mount Everest?", "answer": 8849, "unit": "Meter", "explain": "So lautet die Messung von 2020."},
+    {"type": "estimate", "q": "Wie lang ist der Rhein insgesamt?", "answer": 1233, "unit": "km", "explain": "Rund 865 km davon liegen in Deutschland."},
+    {"type": "estimate", "q": "Wie lang ist die Donau?", "answer": 2850, "unit": "km", "explain": "Rund 2850 km – sie ist der zweitlängste Fluss Europas."},
+    {"type": "estimate", "q": "Wie lang ist der Äquator?", "answer": 40075, "unit": "km", "explain": "Rund 40.075 Kilometer."},
+    {"type": "estimate", "q": "Wie tief ist der Marianengraben an seiner tiefsten Stelle?", "answer": 10994, "unit": "Meter", "explain": "Das Challengertief liegt rund 11 km unter dem Meeresspiegel."},
+    {"type": "estimate", "q": "Wie weit ist es von Berlin nach München (Luftlinie)?", "answer": 504, "unit": "km", "explain": "Mit dem Auto sind es knapp 600 km."},
+    {"type": "estimate", "q": "Wie groß ist Deutschland?", "answer": 357600, "unit": "km²", "explain": "Rund 357.600 Quadratkilometer."},
+    {"type": "estimate", "q": "Wie viele Einwohner hat Liechtenstein?", "answer": 40000, "unit": "Einwohner", "explain": "Rund 40.000 Menschen leben in Liechtenstein."},
+    {"type": "estimate", "q": "Wie lang ist der Nord-Ostsee-Kanal?", "answer": 98, "unit": "km", "explain": "Er ist eine der meistbefahrenen künstlichen Wasserstraßen der Welt."},
+    {"type": "estimate", "q": "Wie lang ist der Panamakanal?", "answer": 82, "unit": "km", "explain": "Er wurde 1914 eröffnet."}
+  ],
+  "Geschichte": [
+    {"type": "estimate", "q": "In welchem Jahr wurde die Berliner Mauer gebaut?", "answer": 1961, "unit": "", "explain": "Der Bau begann am 13. August 1961."},
+    {"type": "estimate", "q": "In welchem Jahr wurde der Eiffelturm fertiggestellt?", "answer": 1889, "unit": "", "explain": "Er wurde zur Weltausstellung 1889 gebaut."},
+    {"type": "estimate", "q": "In welchem Jahr wurde der Kölner Dom fertiggestellt?", "answer": 1880, "unit": "", "explain": "Der Bau hatte 1248 begonnen."},
+    {"type": "estimate", "q": "Wie viele Jahre dauerte der Hundertjährige Krieg tatsächlich?", "answer": 116, "unit": "Jahre", "explain": "Von 1337 bis 1453."},
+    {"type": "estimate", "q": "Wie viele Jahre regierte Königin Elisabeth II.?", "answer": 70, "unit": "Jahre", "explain": "Von 1952 bis 2022."},
+    {"type": "estimate", "q": "In welchem Jahr wurde Mozart geboren?", "answer": 1756, "unit": "", "explain": "Mozart wurde am 27. Januar 1756 in Salzburg geboren."},
+    {"type": "estimate", "q": "In welchem Jahr starb Elvis Presley?", "answer": 1977, "unit": "", "explain": "Elvis starb am 16. August 1977."}
+  ],
+  "Wissenschaft": [
+    {"type": "estimate", "q": "Wie weit ist der Mond durchschnittlich von der Erde entfernt?", "answer": 384400, "unit": "km", "explain": "Licht braucht dafür etwa 1,3 Sekunden."},
+    {"type": "estimate", "q": "Wie weit ist die Erde von der Sonne entfernt?", "answer": 150, "unit": "Millionen km", "explain": "Genauer rund 149,6 Millionen Kilometer."},
+    {"type": "estimate", "q": "Wie heiß ist die Oberfläche der Sonne ungefähr?", "answer": 5500, "unit": "°C", "explain": "Im Kern sind es über 15 Millionen Grad."},
+    {"type": "estimate", "q": "Wie viele Monde hat der Mars?", "answer": 2, "unit": "Monde", "explain": "Phobos und Deimos."},
+    {"type": "estimate", "q": "Wie viele Erdtage dauert ein Jahr auf dem Mars?", "answer": 687, "unit": "Tage", "explain": "Fast doppelt so lang wie ein Erdjahr."},
+    {"type": "estimate", "q": "Wie viele Tage braucht der Mond für eine Umrundung der Erde?", "answer": 27.3, "unit": "Tage", "explain": "Von Vollmond zu Vollmond sind es wegen der Erdbewegung etwa 29,5 Tage."},
+    {"type": "estimate", "q": "Wie viele Liter Blut hat ein erwachsener Mensch ungefähr?", "answer": 5, "unit": "Liter", "explain": "Etwa 7 bis 8 % des Körpergewichts."},
+    {"type": "estimate", "q": "Wie viele Zähne hat ein erwachsener Hund?", "answer": 42, "unit": "Zähne", "explain": "Welpen haben nur 28 Milchzähne."}
+  ],
+  "Natur & Tiere": [
+    {"type": "estimate", "q": "Wie viele Beine hat ein Hummer (inklusive Scheren)?", "answer": 10, "unit": "Beine", "explain": "Hummer gehören zu den Zehnfußkrebsen."},
+    {"type": "estimate", "q": "Wie lange ist eine Elefantenkuh trächtig?", "answer": 22, "unit": "Monate", "explain": "Die längste Tragzeit aller Landsäugetiere."},
+    {"type": "estimate", "q": "Wie lang wird ein Blauwal höchstens?", "answer": 30, "unit": "Meter", "explain": "Blauwale sind die größten Tiere, die je gelebt haben."},
+    {"type": "estimate", "q": "Wie hoch wird eine Giraffe höchstens?", "answer": 5.5, "unit": "Meter", "explain": "Allein der Hals ist rund zwei Meter lang."}
+  ],
+  "Sport": [
+    {"type": "estimate", "q": "Wie viele Meter ist ein Marathon lang?", "answer": 42195, "unit": "Meter", "explain": "42,195 Kilometer."},
+    {"type": "estimate", "q": "Wie lang ist das Spielfeld bei einer Fußball-WM?", "answer": 105, "unit": "Meter", "explain": "Empfohlen sind 105 × 68 Meter."},
+    {"type": "estimate", "q": "Wie viele Spiele bestreitet ein Verein in einer Bundesliga-Saison?", "answer": 34, "unit": "Spiele", "explain": "18 Vereine, Hin- und Rückrunde: 2 × 17 Spiele."},
+    {"type": "estimate", "q": "Wie viele Tore schoss Deutschland im WM-Halbfinale 2014 gegen Brasilien?", "answer": 7, "unit": "Tore", "explain": "Das Spiel endete 7:1."},
+    {"type": "estimate", "q": "Wie lang ist ein Tennisplatz?", "answer": 23.77, "unit": "Meter", "explain": "Das entspricht 78 Fuß."},
+    {"type": "estimate", "q": "Wie schwer darf ein Fußball höchstens sein?", "answer": 450, "unit": "Gramm", "explain": "Erlaubt sind 410 bis 450 Gramm."},
+    {"type": "estimate", "q": "Wie hoch hängt ein Basketballkorb?", "answer": 3.05, "unit": "Meter", "explain": "Das sind genau 10 Fuß."}
+  ],
+  "Film & Musik": [
+    {"type": "estimate", "q": "In welchem Jahr erschien der erste Harry-Potter-Roman im Original?", "answer": 1997, "unit": "", "explain": "Auf Deutsch erschien er 1998."},
+    {"type": "estimate", "q": "Wie viele Saiten hat eine Konzertharfe?", "answer": 47, "unit": "Saiten", "explain": "Dazu kommen sieben Pedale zum Umstimmen."},
+    {"type": "estimate", "q": "Wie viele Sinfonien schrieb Joseph Haydn?", "answer": 104, "unit": "Sinfonien", "explain": "Haydn gilt als „Vater der Sinfonie“."},
+    {"type": "estimate", "q": "Wie viele Folgen hat die Serie „Friends“?", "answer": 236, "unit": "Folgen", "explain": "Zehn Staffeln von 1994 bis 2004."},
+    {"type": "estimate", "q": "Wie viele Tasten hat ein normales Klavier?", "answer": 88, "unit": "Tasten", "explain": "52 weiße und 36 schwarze."}
+  ],
+  "Technik & Games": [
+    {"type": "estimate", "q": "In welchem Jahr wurde Google gegründet?", "answer": 1998, "unit": "", "explain": "Larry Page und Sergey Brin gründeten Google in einer Garage."},
+    {"type": "estimate", "q": "In welchem Jahr erschien „Super Mario Bros.“?", "answer": 1985, "unit": "", "explain": "Es erschien für das NES."},
+    {"type": "estimate", "q": "In welchem Jahr ging Wikipedia online?", "answer": 2001, "unit": "", "explain": "Die englische Wikipedia startete im Januar 2001."},
+    {"type": "estimate", "q": "Wie hoch ist der Berliner Fernsehturm?", "answer": 368, "unit": "Meter", "explain": "Er ist das höchste Bauwerk Deutschlands."},
+    {"type": "estimate", "q": "Wie hoch ist der Burj Khalifa?", "answer": 828, "unit": "Meter", "explain": "Das höchste Gebäude der Welt steht in Dubai."},
+    {"type": "estimate", "q": "Wie hoch ist der Eiffelturm mit Antenne?", "answer": 330, "unit": "Meter", "explain": "Ohne Antennen ist er rund 300 Meter hoch."},
+    {"type": "estimate", "q": "Wie hoch ist der Kölner Dom?", "answer": 157, "unit": "Meter", "explain": "Er war von 1880 bis 1884 das höchste Gebäude der Welt."},
+    {"type": "estimate", "q": "Wie lang ist die Golden Gate Bridge insgesamt?", "answer": 2737, "unit": "Meter", "explain": "Sie wurde 1937 eröffnet."},
+    {"type": "estimate", "q": "Wie viele Stockwerke hat der Burj Khalifa?", "answer": 163, "unit": "Stockwerke", "explain": "Dazu kommen noch technische Etagen in der Spitze."}
+  ]
+}

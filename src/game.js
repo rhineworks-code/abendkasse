@@ -108,6 +108,7 @@ function createGame(owner, { name, genres, mode, perDay, difficulty }) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(code, name, owner.id, JSON.stringify(genres), mode, perDay, freshStart(T.now()), difficulty);
     db.prepare('INSERT INTO game_players (game_id, player_id) VALUES (?, ?)').run(r.lastInsertRowid, owner.id);
     P.once(Number(r.lastInsertRowid), `morning:${T.now().date}`); // wer gerade erstellt, braucht keinen Morgen-Push
+    if (T.now().hour >= cfg.REMINDER_HOUR) P.once(Number(r.lastInsertRowid), `reminder:${T.now().date}`);
     return getGame(code);
   });
 }
@@ -137,12 +138,57 @@ function joinGame(code, player) {
 }
 
 // Einstellungen eines laufenden Spiels ändern (gilt ab der nächsten neuen Runde)
-function updateSettings(game, { difficulty }) {
+function updateSettings(game, player, { difficulty, themeMode, theme }) {
   if (difficulty !== undefined) {
     if (!DIFFICULTIES[difficulty]) throw httpError(400, 'Unbekannte Schwierigkeit.');
     db.prepare('UPDATE games SET difficulty = ? WHERE id = ?').run(difficulty, game.id);
   }
-  return { ok: true, difficulty: getGame(game.code).difficulty };
+  if (themeMode !== undefined) {
+    db.prepare('UPDATE games SET theme_mode = ?, week_theme = CASE WHEN ? THEN week_theme ELSE NULL END, theme_chooser = NULL WHERE id = ?')
+      .run(themeMode ? 1 : 0, themeMode ? 1 : 0, game.id);
+    game = getGame(game.code);
+  }
+  if (theme !== undefined) chooseTheme(game, player, theme);
+  const g = getGame(game.code);
+  return { ok: true, difficulty: g.difficulty, themeMode: !!g.theme_mode, theme: g.week_theme };
+}
+
+// ---------- Themenwoche ----------
+// Eine Woche lang nur ein Genre. Der Wochensieger wählt das Thema der nächsten Woche.
+// Wählt niemand rechtzeitig (bis zur ersten Runde der Woche), entscheidet der Zufall.
+
+const weekHasRounds = (game) =>
+  !!db.prepare("SELECT 1 FROM days WHERE game_id = ? AND week_no = ? AND kind = 'day'").get(game.id, game.week_no);
+
+function chooseTheme(game, player, theme) {
+  if (!game.theme_mode) throw httpError(409, 'Die Themenwoche ist nicht eingeschaltet.');
+  if (!game.genres.includes(theme)) throw httpError(400, 'Dieses Genre gehört nicht zum Spiel.');
+  if (game.week_theme && weekHasRounds(game)) throw httpError(409, 'Das Thema dieser Woche steht schon fest.');
+  if (game.theme_chooser && game.theme_chooser !== player.id) {
+    const who = gamePlayers(game.id).find((p) => p.id === game.theme_chooser);
+    throw httpError(403, `Das Thema wählt diese Woche ${who ? who.name : 'der Wochensieger'}.`);
+  }
+  db.prepare('UPDATE games SET week_theme = ?, theme_chooser = NULL WHERE id = ?').run(theme, game.id);
+  P.send(gamePlayers(game.id).filter((p) => p.id !== player.id).map((p) => p.id), {
+    title: `Themenwoche: ${theme} 🎯`, body: `${player.name} hat das Thema gewählt – diese Woche dreht sich alles um ${theme}.`,
+    url: gameUrl(game), tag: `theme-${game.code}`,
+  });
+}
+
+// Vor der ersten Runde einer Themenwoche: Thema per Zufall festlegen, falls niemand gewählt hat
+function ensureTheme(game) {
+  if (!game.theme_mode || game.week_theme) return;
+  const theme = shuffle(game.genres)[0];
+  db.prepare('UPDATE games SET week_theme = ?, theme_chooser = NULL WHERE id = ?').run(theme, game.id);
+  console.log(`[Themenwoche] ${game.code}: Zufallsthema ${theme}`);
+}
+
+function themeView(game, me, players) {
+  if (!game.theme_mode) return { mode: false };
+  const chooser = players.find((p) => p.id === game.theme_chooser);
+  const locked = !!game.week_theme && weekHasRounds(game);
+  return { mode: true, theme: game.week_theme, chooser: chooser ? chooser.name : null, locked,
+    canChoose: !locked && (!game.theme_chooser || game.theme_chooser === me.id) };
 }
 
 const gamesOfPlayer = (playerId) => db.prepare(`
@@ -160,25 +206,40 @@ function dayGenre(game, date) {
   return game.genres[idx];
 }
 
-function pickQuestions(game, genre, count = game.per_day) {
-  const allowed = genre ? [genre] : game.genres;
-  const weights = DIFFICULTIES[normDifficulty(game.difficulty)];
-  let inGenres = Q.all().filter((q) => allowed.includes(q.genre) && weights[q.level]);
-  // Zu wenige Fragen dieser Stufe -> auf alle Stufen ausweichen
-  if (inGenres.length < count) inGenres = Q.all().filter((q) => allowed.includes(q.genre));
-  const weightOf = (q) => weights[q.level] || 0.2;
-  const used = new Set(db.prepare('SELECT qid FROM used_questions WHERE game_id = ?').all(game.id).map((r) => r.qid));
-  let pool = inGenres.filter((q) => !used.has(q.id));
+// Fragenkatalog mit Korrekturen (Stufe geändert / Frage deaktiviert)
+let overrides = null;
+function loadOverrides() {
+  overrides = {};
+  db.prepare('SELECT qid, level, disabled FROM question_overrides').all().forEach((o) => (overrides[o.qid] = o));
+}
+function bank() {
+  if (!overrides) loadOverrides();
+  return Q.all().filter((q) => !overrides[q.id]?.disabled)
+    .map((q) => (overrides[q.id]?.level ? { ...q, level: overrides[q.id].level } : q));
+}
 
+// Themenwoche: festes Genre für die ganze Woche
+const themeOf = (game) => (game.theme_mode && game.week_theme ? game.week_theme : null);
+
+function pickQuestions(game, genre, count = game.per_day) {
+  const allowed = themeOf(game) ? [themeOf(game)] : genre ? [genre] : game.genres;
+  const weights = DIFFICULTIES[normDifficulty(game.difficulty)];
+  const weightOf = (q) => weights[q.level] || 0.2;
+  const all = bank().filter((q) => allowed.includes(q.genre));
+  const fitting = all.filter((q) => weights[q.level]);
+  const used = new Set(db.prepare('SELECT qid FROM used_questions WHERE game_id = ?').all(game.id).map((r) => r.qid));
+
+  // 1. unbenutzte Fragen der gewählten Stufe, 2. unbenutzte anderer Stufen, 3. von vorne
+  let pool = fitting.filter((q) => !used.has(q.id));
+  if (pool.length < count) pool = all.filter((q) => !used.has(q.id));
   if (pool.length < count) {
-    // Katalog für diese Genres aufgebraucht -> wieder von vorne
     const del = db.prepare('DELETE FROM used_questions WHERE game_id = ? AND qid = ?');
-    inGenres.forEach((q) => del.run(game.id, q.id));
-    pool = inGenres;
+    all.forEach((q) => del.run(game.id, q.id));
+    pool = fitting.length >= count ? fitting : all;
   }
   // Im Mix-Modus möglichst gleichmäßig über die Genres verteilen
   let picked;
-  if (!genre && allowed.length > 1) {
+  if (allowed.length > 1) {
     const byGenre = {};
     weightedOrder(pool, weightOf).forEach((q) => (byGenre[q.genre] = byGenre[q.genre] || []).push(q));
     const order = shuffle(Object.keys(byGenre));
@@ -193,31 +254,66 @@ function pickQuestions(game, genre, count = game.per_day) {
   return picked.map((q, i) => ({ q, i })).sort((a, b) => a.q.level - b.q.level || a.i - b.i).map((e) => e.q);
 }
 
+// Frage für eine Runde „einfrieren“: Antworten mischen, Lösung merken
+function snapshot(q) {
+  const base = { id: q.id, type: q.type, genre: q.genre, level: q.level, q: q.q, explain: q.explain || '' };
+  if (q.type === 'tf') return { ...base, options: ['Wahr', 'Falsch'], answer: q.answer ? 0 : 1 };
+  if (q.type === 'order') {
+    let order;
+    do order = shuffle(q.items.map((_, i) => i)); while (order.every((v, i) => v === i));
+    return { ...base, items: order.map((i) => q.items[i]), answer: q.items.map((_, k) => order.indexOf(k)) };
+  }
+  let wrong = q.wrong;
+  if (!wrong && q.wrongPool) {
+    const same = q.wrongPool.filter((w) => w.level === q.level);
+    wrong = shuffle(same.length >= 3 ? same : q.wrongPool).slice(0, 3).map((w) => w.name);
+  }
+  const options = shuffle([q.correct, ...wrong]);
+  return { ...base, options, answer: options.indexOf(q.correct), image: q.image || null };
+}
+
 function newQuestions(game, date, count = game.per_day, mix = false) {
   let genre = mix ? null : dayGenre(game, date);
-  if (genre && Q.all().filter((q) => q.genre === genre).length < count) genre = null;
-  const questions = pickQuestions(game, genre, count).map((q) => {
-    const options = shuffle([q.correct, ...q.wrong]);
-    return { id: q.id, genre: q.genre, level: q.level, q: q.q, options, answer: options.indexOf(q.correct) };
-  });
+  if (genre && bank().filter((q) => q.genre === genre).length < count) genre = null;
+  const questions = pickQuestions(game, genre, count).map(snapshot);
   const ins = db.prepare('INSERT OR IGNORE INTO used_questions (game_id, qid) VALUES (?, ?)');
   questions.forEach((q) => ins.run(game.id, q.id));
-  return { genre, questions };
+  return { genre: themeOf(game) || genre, questions };
+}
+
+// Duell-Frage des Tages: eine Schätzfrage
+function newDuel(game) {
+  if (!overrides) loadOverrides();
+  const all = Q.estimates().filter((q) => !overrides[q.id]?.disabled);
+  if (!all.length) return null;
+  const used = new Set(db.prepare("SELECT qid FROM used_questions WHERE game_id = ? AND qid LIKE 'schaetzfragen:%'").all(game.id).map((r) => r.qid));
+  let pool = all.filter((q) => !used.has(q.id));
+  if (!pool.length) {
+    db.prepare("DELETE FROM used_questions WHERE game_id = ? AND qid LIKE 'schaetzfragen:%'").run(game.id);
+    pool = all;
+  }
+  const q = shuffle(pool)[0];
+  db.prepare('INSERT OR IGNORE INTO used_questions (game_id, qid) VALUES (?, ?)').run(game.id, q.id);
+  return { id: q.id, genre: q.genre, q: q.q, answer: q.answer, unit: q.unit, explain: q.explain || '' };
 }
 
 function createDay(game, date, dueDate = null, replay = 0) {
+  ensureTheme(game);
+  game = getGame(game.code);
   return tx(() => {
     const { genre, questions } = newQuestions(game, date);
-    db.prepare('INSERT OR IGNORE INTO days (game_id, date, week_no, genre, questions, due_date, replay) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(game.id, date, game.week_no, genre, JSON.stringify(questions), dueDate, replay);
+    const duel = newDuel(game);
+    db.prepare('INSERT OR IGNORE INTO days (game_id, date, week_no, genre, questions, due_date, replay, duel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(game.id, date, game.week_no, genre, JSON.stringify(questions), dueDate, replay, duel ? JSON.stringify(duel) : null);
     return getDay(game.id, date, 'day');
   });
 }
 
 function parseDay(d) {
   if (!d) return d;
-  d.questions = JSON.parse(d.questions);
+  d.questions = JSON.parse(d.questions).map((q) => ({ type: 'mc', ...q }));
   d.history = d.history ? JSON.parse(d.history) : [];
+  d.duel = d.duel ? JSON.parse(d.duel) : null;
   return d;
 }
 
@@ -266,25 +362,103 @@ function todayState(game) {
   return { state: 'open', date: n.date, day: day || createDay(game, n.date) };
 }
 
-function answer(game, player, idx, choice, date, kind) {
+// Antworten eines Spielers: idx -> {choice, value, stake, ms}
+function answerRows(dayId, playerId) {
+  const out = {};
+  db.prepare('SELECT idx, choice, value, stake, ms FROM answers WHERE day_id = ? AND player_id = ?').all(dayId, playerId)
+    .forEach((a) => (out[a.idx] = { choice: a.choice, value: a.value ? JSON.parse(a.value) : null, stake: a.stake, ms: a.ms }));
+  return out;
+}
+const opensOf = (dayId, playerId) => {
+  const out = {};
+  db.prepare('SELECT idx, opened_at, stake FROM opens WHERE day_id = ? AND player_id = ?').all(dayId, playerId).forEach((o) => (out[o.idx] = o));
+  return out;
+};
+const isCorrect = (q, a) => !!a && (q.type === 'order'
+  ? Array.isArray(a.value) && a.value.length === q.answer.length && a.value.every((v, i) => v === q.answer[i])
+  : a.choice === q.answer);
+const shownAnswer = (q, a) => (a ? (q.type === 'order' ? a.value : a.choice) : null);
+
+// Kontostand minus Einsätze, die noch nicht ausgezahlt sind
+function stakeAvailable(game, playerId) {
+  const bal = db.prepare('SELECT COALESCE(SUM(amount), 0) AS b FROM ledger WHERE game_id = ? AND player_id = ?').get(game.id, playerId).b;
+  const pending = db.prepare(`SELECT COALESCE(SUM(o.stake), 0) AS s FROM opens o JOIN days d ON d.id = o.day_id
+    WHERE d.game_id = ? AND o.player_id = ? AND d.paid = 0`).get(game.id, playerId).s;
+  return Math.max(0, bal - pending);
+}
+const stakeSteps = () => { const out = []; for (let v = 0; v <= cfg.MAX_STAKE; v += Math.max(1, cfg.STAKE_STEP)) out.push(v); return out; };
+
+// Frage aufdecken (mit Einsatz). Ab jetzt läuft die Zeit für den Tempo-Bonus.
+function openQuestion(game, player, idx, stake, date, kind) {
   const day = playableDay(game, date, kind);
   if (!Number.isInteger(idx) || idx < 0 || idx >= day.questions.length) throw httpError(400, 'Ungültige Frage.');
-  if (!Number.isInteger(choice) || choice < 0 || choice >= day.questions[idx].options.length) throw httpError(400, 'Ungültige Antwort.');
-  const j = jokersOf(day.id, player.id).find((x) => x.idx === idx);
-  if (j && j.removed.includes(choice)) throw httpError(400, 'Diese Antwort wurde vom Joker entfernt.');
-  const r = db.prepare('INSERT OR IGNORE INTO answers (day_id, player_id, idx, choice) VALUES (?, ?, ?, ?)')
-    .run(day.id, player.id, idx, choice);
-  if (!r.changes) throw httpError(409, 'Diese Frage hast du schon beantwortet.');
-  const mine = answersOf(day.id, player.id);
-  if (Object.keys(mine).length === day.questions.length) {
-    try { onRoundFinished(game, player, day); } catch (e) { console.error('[Push] Fehler bei Rundenende', e); }
-  }
-  return mine;
+  const rows = answerRows(day.id, player.id);
+  if (rows[idx]) throw httpError(409, 'Diese Frage hast du schon beantwortet.');
+  const next = day.questions.findIndex((_, i) => !rows[i]);
+  if (idx !== next) throw httpError(409, 'Bitte die Fragen der Reihe nach beantworten.');
+  if (opensOf(day.id, player.id)[idx]) return { ok: true };
+  stake = Number(stake) || 0;
+  if (!stakeSteps().includes(stake)) throw httpError(400, 'Ungültiger Einsatz.');
+  if (stake > stakeAvailable(game, player.id)) throw httpError(409, 'Dafür reicht dein Kontostand nicht.');
+  db.prepare('INSERT OR IGNORE INTO opens (day_id, player_id, idx, opened_at, stake) VALUES (?, ?, ?, ?, ?)')
+    .run(day.id, player.id, idx, Date.now(), stake);
+  return { ok: true };
 }
 
+function answer(game, player, idx, choice, date, kind, order) {
+  const day = playableDay(game, date, kind);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= day.questions.length) throw httpError(400, 'Ungültige Frage.');
+  const q = day.questions[idx];
+  const open = opensOf(day.id, player.id)[idx];
+  if (!open) throw httpError(409, 'Bitte die Frage zuerst aufdecken.');
+  let value = null;
+  if (q.type === 'order') {
+    const n = q.items.length;
+    if (!Array.isArray(order) || order.length !== n || new Set(order).size !== n || !order.every((v) => Number.isInteger(v) && v >= 0 && v < n)) {
+      throw httpError(400, 'Bitte alle Einträge in eine Reihenfolge bringen.');
+    }
+    value = JSON.stringify(order);
+    choice = 0;
+  } else {
+    if (!Number.isInteger(choice) || choice < 0 || choice >= q.options.length) throw httpError(400, 'Ungültige Antwort.');
+    const j = jokersOf(day.id, player.id).find((x) => x.idx === idx);
+    if (j && j.removed.includes(choice)) throw httpError(400, 'Diese Antwort wurde vom Joker entfernt.');
+  }
+  const ms = Date.now() - open.opened_at;
+  const r = db.prepare('INSERT OR IGNORE INTO answers (day_id, player_id, idx, choice, value, stake, ms) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(day.id, player.id, idx, choice, value, open.stake, ms);
+  if (!r.changes) throw httpError(409, 'Diese Frage hast du schon beantwortet.');
+  if (roundComplete(day, player.id)) {
+    try { onRoundFinished(game, player, day); } catch (e) { console.error('[Push] Fehler bei Rundenende', e); }
+  }
+  return { ok: true, fast: ms <= cfg.TEMPO_SECONDS * 1000 };
+}
+
+// Duell-Frage beantworten (nur Tagesrunden)
+function answerDuel(game, player, value, date) {
+  const day = playableDay(game, date, 'day');
+  if (!day.duel) throw httpError(409, 'Heute gibt es keine Duell-Frage.');
+  const v = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(v) || Math.abs(v) > 1e12) throw httpError(400, 'Bitte eine Zahl eingeben.');
+  const r = db.prepare('INSERT OR IGNORE INTO duel_answers (day_id, player_id, value) VALUES (?, ?, ?)').run(day.id, player.id, v);
+  if (!r.changes) throw httpError(409, 'Du hast schon geschätzt.');
+  if (roundComplete(day, player.id)) {
+    try { onRoundFinished(game, player, day); } catch (e) { console.error('[Push] Fehler bei Rundenende', e); }
+  }
+  return { ok: true };
+}
+const duelOf = (dayId) => {
+  const out = {};
+  db.prepare('SELECT player_id, value FROM duel_answers WHERE day_id = ?').all(dayId).forEach((r) => (out[r.player_id] = r.value));
+  return out;
+};
+
 const roundName = (d) => (d.kind === 'extra' ? 'Extrarunde' : d.replay ? `Nachholrunde für ${fmtDe(d.date)}` : 'Tagesrunde');
-const finishedRound = (d, playerId) =>
-  db.prepare('SELECT COUNT(*) AS c FROM answers WHERE day_id = ? AND player_id = ?').get(d.id, playerId).c >= d.questions.length;
+// Runde komplett: alle Fragen beantwortet und (falls vorhanden) die Duell-Frage geschätzt
+const roundComplete = (d, playerId) =>
+  db.prepare('SELECT COUNT(*) AS c FROM answers WHERE day_id = ? AND player_id = ?').get(d.id, playerId).c >= d.questions.length
+  && (!d.duel || !!db.prepare('SELECT 1 FROM duel_answers WHERE day_id = ? AND player_id = ?').get(d.id, playerId));
+const finishedRound = roundComplete;
 
 // Spieler hat alle Fragen einer Runde beantwortet -> Partner benachrichtigen, ggf. Extrarunde anbieten
 function onRoundFinished(game, player, day) {
@@ -325,6 +499,7 @@ function answerExtra(game, player, accept) {
   if (!offer || isAfterPayout(n)) throw httpError(409, 'Heute gibt es kein Angebot für eine Extrarunde.');
   if (offer.declinedBy) throw httpError(409, 'Die Extrarunde wurde abgelehnt.');
   if (getDay(game.id, n.date, 'extra')) throw httpError(409, 'Die Extrarunde läuft schon.');
+  if (getDay(game.id, n.date, 'day')?.paid) throw httpError(409, 'Heute wurde schon ausgezahlt.');
   const players = gamePlayers(game.id);
   const others = players.filter((p) => p.id !== player.id).map((p) => p.id);
 
@@ -360,10 +535,11 @@ function extraView(game, me) {
   const offer = getExtraOffer(game, n.date);
   const round = getDay(game.id, n.date, 'extra');
   if (!offer && !round) return null;
+  const todayPaid = !!getDay(game.id, n.date, 'day')?.paid;
   const players = gamePlayers(game.id);
   return {
     date: n.date, questions: cfg.EXTRA_QUESTIONS, deadline: cfg.PAYOUT_HOUR,
-    status: round ? (round.paid ? 'paid' : extraOpen(round, n) ? 'open' : 'closed') : offer.declinedBy ? 'declined' : isAfterPayout(n) ? 'expired' : 'offer',
+    status: round ? (round.paid ? 'paid' : extraOpen(round, n) ? 'open' : 'closed') : offer.declinedBy ? 'declined' : isAfterPayout(n) || todayPaid ? 'expired' : 'offer',
     declinedBy: offer && offer.declinedBy ? players.find((p) => p.id === offer.declinedBy)?.name || '?' : null,
     accepted: offer ? offer.ok.includes(me.id) : false,
     waitingFor: offer ? players.filter((p) => !offer.ok.includes(p.id)).map((p) => p.name) : [],
@@ -380,7 +556,10 @@ const jokersOf = (dayId, playerId) =>
 function useJoker(game, player, idx, date, kind) {
   const day = playableDay(game, date, kind);
   if (!Number.isInteger(idx) || idx < 0 || idx >= day.questions.length) throw httpError(400, 'Ungültige Frage.');
-  if (answersOf(day.id, player.id)[idx] !== undefined) throw httpError(409, 'Diese Frage ist schon beantwortet.');
+  if (answerRows(day.id, player.id)[idx]) throw httpError(409, 'Diese Frage ist schon beantwortet.');
+  if (!opensOf(day.id, player.id)[idx]) throw httpError(409, 'Bitte die Frage zuerst aufdecken.');
+  const qq = day.questions[idx];
+  if (qq.type === 'order' || qq.options.length < 4) throw httpError(409, 'Bei dieser Frage gibt es keinen 50:50-Joker.');
   const used = jokersOf(day.id, player.id);
   if (used.some((j) => j.idx === idx)) return used.find((j) => j.idx === idx);
   if (used.length >= cfg.JOKERS_PER_DAY) throw httpError(409, 'Dein Joker für diese Runde ist schon verbraucht.');
@@ -393,43 +572,80 @@ function useJoker(game, player, idx, date, kind) {
   return { idx, removed };
 }
 
-function answersOf(dayId, playerId) {
+// idx -> gegebene Antwort (Index bzw. Reihenfolge)
+function answersOf(dayId, playerId, questions) {
+  const rows = answerRows(dayId, playerId);
   const out = {};
-  db.prepare('SELECT idx, choice FROM answers WHERE day_id = ? AND player_id = ?').all(dayId, playerId)
-    .forEach((a) => (out[a.idx] = a.choice));
+  for (const [i, a] of Object.entries(rows)) out[i] = questions ? shownAnswer(questions[i] || {}, a) : (a.value || a.choice);
   return out;
 }
 
 // ---------- Auszahlung ----------
 
+// Punkte eines Spielers für eine Runde berechnen
+function scoreRound(day, playerId, duelPts = 0) {
+  const rows = answerRows(day.id, playerId);
+  const opens = opensOf(day.id, playerId);
+  const total = day.questions.length;
+  let correct = 0, base = 0, tempo = 0, tempoCount = 0, stakeNet = 0, stakeWon = 0, stakeLost = 0;
+  day.questions.forEach((q, i) => {
+    const a = rows[i];
+    const ok = isCorrect(q, a);
+    const stake = (a ? a.stake : opens[i]?.stake) || 0;
+    if (ok) {
+      correct++; base += cfg.POINTS_PER_CORRECT;
+      if (a.ms != null && a.ms <= cfg.TEMPO_SECONDS * 1000) { tempo += cfg.TEMPO_BONUS; tempoCount++; }
+    }
+    if (stake) { if (ok) { stakeNet += stake; stakeWon += stake; } else { stakeNet -= stake; stakeLost += stake; } }
+  });
+  const perfect = correct === total && total > 0 ? cfg.PERFECT_DAY_BONUS : 0;
+  const points = base + perfect + tempo + stakeNet + duelPts;
+  return { correct, total, base, perfect, tempo, tempoCount, stakeNet, stakeWon, stakeLost, duel: duelPts, points };
+}
+
+// Duell: wer am nächsten dran ist, bekommt DUEL_POINTS (bei Gleichstand geteilt)
+function duelResult(day, players) {
+  if (!day.duel) return { points: {}, winners: [], values: {} };
+  const values = duelOf(day.id);
+  const ids = players.map((p) => p.id).filter((id) => values[id] !== undefined);
+  if (!ids.length) return { points: {}, winners: [], values };
+  const dist = (id) => Math.abs(values[id] - day.duel.answer);
+  const best = Math.min(...ids.map(dist));
+  const winners = ids.filter((id) => Math.abs(dist(id) - best) < 1e-9);
+  const each = Math.round(cfg.DUEL_POINTS / winners.length);
+  const points = {};
+  winners.forEach((id) => (points[id] = each));
+  return { points, winners, values };
+}
+
 function payoutDay(day) {
   const game = db.prepare('SELECT * FROM games WHERE id = ?').get(day.game_id);
   const players = gamePlayers(day.game_id);
-  const total = day.questions.length;
   const summary = [];
+  const kindName = day.kind === 'extra' ? 'Extrarunde' : day.replay ? 'Nachholrunde' : 'Tagesrunde';
+  const book = (pid, amount, reason) => amount && db.prepare('INSERT INTO ledger (game_id, player_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?)')
+    .run(day.game_id, pid, amount, reason, day.date);
 
   tx(() => {
     const fresh = db.prepare('SELECT paid FROM days WHERE id = ?').get(day.id);
     if (fresh.paid) return;
+    const duel = duelResult(day, players);
     for (const p of players) {
-      const ans = answersOf(day.id, p.id);
-      const correct = day.questions.filter((q, i) => ans[i] === q.answer).length;
-      const points = correct * cfg.POINTS_PER_CORRECT + (correct === total && total > 0 ? cfg.PERFECT_DAY_BONUS : 0);
-      db.prepare('INSERT OR REPLACE INTO results (day_id, player_id, correct, total, points) VALUES (?, ?, ?, ?, ?)')
-        .run(day.id, p.id, correct, total, points);
-      if (points > 0) {
-        const kind = day.kind === 'extra' ? 'Extrarunde' : day.replay ? 'Nachholrunde' : 'Tagesrunde';
-        const reason = correct === total ? `${kind}: ${correct}/${total} richtig (inkl. Perfekt-Bonus)` : `${kind}: ${correct}/${total} richtig`;
-        db.prepare('INSERT INTO ledger (game_id, player_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?)')
-          .run(day.game_id, p.id, points, reason, day.date);
-      }
-      summary.push({ id: p.id, name: p.name, correct, total, points, balance: p.balance + points });
+      const r = scoreRound(day, p.id, duel.points[p.id] || 0);
+      db.prepare('INSERT OR REPLACE INTO results (day_id, player_id, correct, total, points, detail) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(day.id, p.id, r.correct, r.total, r.points, JSON.stringify(r));
+      book(p.id, r.base + r.perfect, `${kindName}: ${r.correct}/${r.total} richtig${r.perfect ? ' (inkl. Perfekt-Bonus)' : ''}`);
+      book(p.id, r.tempo, `Tempo-Bonus: ${r.tempoCount}× unter ${cfg.TEMPO_SECONDS} s`);
+      book(p.id, r.stakeNet, `Einsätze: +${r.stakeWon} gewonnen, −${r.stakeLost} verloren`);
+      book(p.id, r.duel, duel.winners.length > 1 ? 'Duell-Frage: Gleichstand' : 'Duell-Frage gewonnen');
+      summary.push({ id: p.id, name: p.name, ...r, balance: p.balance + r.points });
     }
     db.prepare('UPDATE days SET paid = 1 WHERE id = ?').run(day.id);
   });
 
-  console.log(`[Auszahlung] ${game.code} ${day.date}:`, summary.map((s) => `${s.name} ${s.correct}/${s.total} +${s.points}`).join(', '));
-  if (summary.length) notify({ type: 'payout', game: game.name, code: game.code, date: day.date, kind: day.kind, results: summary.map(({ id, ...r }) => r) });
+  console.log(`[Auszahlung] ${game.code} ${day.date} ${day.kind}:`, summary.map((s) => `${s.name} ${s.correct}/${s.total} ${s.points >= 0 ? '+' : ''}${s.points}`).join(', '));
+  if (summary.length) notify({ type: 'payout', game: game.name, code: game.code, date: day.date, kind: day.kind,
+    results: summary.map((x) => ({ name: x.name, correct: x.correct, total: x.total, points: x.points, balance: x.balance })) });
   return { game, day, summary };
 }
 
@@ -443,7 +659,8 @@ function pushPayouts(paid) {
       const lines = list.map(({ day, summary }) => {
         const mine = summary.find((x) => x.id === me.id);
         const others = summary.filter((x) => x.id !== me.id).map((x) => `${x.name} ${x.correct}/${x.total}`).join(', ');
-        return `${roundName(day)}: Du ${mine ? `${mine.correct}/${mine.total} (+${mine.points} P)` : '–'}${others ? ` · ${others}` : ''}`;
+        const pts = mine ? `${mine.points >= 0 ? '+' : ''}${mine.points} P` : '';
+        return `${roundName(day)}: Du ${mine ? `${mine.correct}/${mine.total} (${pts})` : '–'}${others ? ` · ${others}` : ''}`;
       });
       P.send([me.id], { title: 'Kassensturz! 💰 Die Auflösung ist da', body: lines.join('\n'), url: gameUrl(game), tag: `payout-${game.code}` });
     }
@@ -463,6 +680,26 @@ function morningPush(n) {
       title: 'Neue Tagesrunde ☀️', body: `${g.per_day} neue Fragen in „${g.name}“ warten auf dich. Auszahlung um ${hh(cfg.PAYOUT_HOUR)} Uhr.`,
       url: `/#/g/${g.code}`, tag: `morning-${g.code}`,
     });
+  }
+}
+
+// Abends: Erinnerung an alle, die die Tagesrunde noch nicht gespielt haben
+function reminderPush(n) {
+  if (n.hour < cfg.REMINDER_HOUR || isAfterPayout(n)) return;
+  for (const g of db.prepare('SELECT * FROM games WHERE week_start <= ?').all(n.date)) {
+    if (!P.once(g.id, `reminder:${n.date}`)) continue;
+    const players = gamePlayers(g.id);
+    const day = getDay(g.id, n.date, 'day');
+    const done = players.filter((p) => day && roundComplete(day, p.id));
+    for (const p of players.filter((x) => !done.includes(x))) {
+      const partner = done.find((x) => x.id !== p.id);
+      const left = cfg.PAYOUT_HOUR - n.hour;
+      P.send([p.id], {
+        title: '⏰ Deine Tagesrunde wartet',
+        body: `${partner ? `${partner.name} hat schon gespielt. ` : ''}Noch ${left} ${left === 1 ? 'Stunde' : 'Stunden'} bis zur Auszahlung um ${hh(cfg.PAYOUT_HOUR)} Uhr.`,
+        url: `/#/g/${g.code}`, tag: `reminder-${g.code}`,
+      });
+    }
   }
 }
 
@@ -534,7 +771,7 @@ function applyIfAgreed(game, date, req) {
       // Punkte stornieren und alten Stand archivieren
       const results = db.prepare('SELECT player_id, correct, total, points FROM results WHERE day_id = ?').all(d.id);
       for (const r of results) {
-        if (r.points > 0) {
+        if (r.points !== 0) {
           db.prepare('INSERT INTO ledger (game_id, player_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?)')
             .run(game.id, r.player_id, -r.points, req.type === 'void' ? 'Storno: Tag gestrichen' : 'Storno: Tag wird wiederholt', date);
         }
@@ -544,8 +781,9 @@ function applyIfAgreed(game, date, req) {
         questions: d.questions, results,
         answers: db.prepare('SELECT player_id, idx, choice FROM answers WHERE day_id = ?').all(d.id),
         jokers: db.prepare('SELECT player_id, idx, removed FROM jokers WHERE day_id = ?').all(d.id),
+        duel: d.duel, duelAnswers: db.prepare('SELECT player_id, value FROM duel_answers WHERE day_id = ?').all(d.id),
       });
-      ['results', 'answers', 'jokers'].forEach((t) => db.prepare(`DELETE FROM ${t} WHERE day_id = ?`).run(d.id));
+      ['results', 'answers', 'jokers', 'opens', 'duel_answers'].forEach((t) => db.prepare(`DELETE FROM ${t} WHERE day_id = ?`).run(d.id));
     }
 
     if (req.type === 'void') {
@@ -554,13 +792,15 @@ function applyIfAgreed(game, date, req) {
       const due = freshStart(n); // spielbar bis zur nächsten Auszahlung
       if (d) {
         const { genre, questions } = newQuestions(game, date);
+        const duel = newDuel(game);
         db.prepare(`UPDATE days SET questions = ?, genre = ?, paid = 0, voided = 0, replay = replay + 1,
-          due_date = ?, history = ? WHERE id = ?`)
-          .run(JSON.stringify(questions), genre, due, JSON.stringify(d.history), d.id);
+          due_date = ?, history = ?, duel = ? WHERE id = ?`)
+          .run(JSON.stringify(questions), genre, due, JSON.stringify(d.history), duel ? JSON.stringify(duel) : null, d.id);
       } else {
         const { genre, questions } = newQuestions(game, date);
-        db.prepare('INSERT INTO days (game_id, date, week_no, genre, questions, due_date, replay) VALUES (?, ?, ?, ?, ?, ?, 1)')
-          .run(game.id, date, game.week_no, genre, JSON.stringify(questions), due);
+        const duel = newDuel(game);
+        db.prepare('INSERT INTO days (game_id, date, week_no, genre, questions, due_date, replay, duel) VALUES (?, ?, ?, ?, ?, ?, 1, ?)')
+          .run(game.id, date, game.week_no, genre, JSON.stringify(questions), due, duel ? JSON.stringify(duel) : null);
       }
     }
   });
@@ -607,7 +847,16 @@ function closeWeekIfDue(game) {
         .run(game.id, id, cfg.WEEK_WIN_BONUS, winners.length > 1 ? `Wochensieg (geteilt), Woche ${game.week_no}` : `Wochensieg, Woche ${game.week_no}`, `W${game.week_no}`);
     }
     db.prepare('UPDATE games SET week_no = week_no + 1, week_start = ? WHERE id = ?').run(next, game.id);
+    if (game.theme_mode) {
+      db.prepare('UPDATE games SET week_theme = NULL, theme_chooser = ? WHERE id = ?').run(winners.length === 1 ? winners[0] : null, game.id);
+    }
   });
+  if (game.theme_mode) {
+    const ids = winners.length === 1 ? winners : players.map((p) => p.id);
+    P.send(ids, { title: winners.length === 1 ? '🏆 Wochensieg! Wähle das neue Thema' : 'Neue Themenwoche – wählt ein Thema',
+      body: 'Unter „Woche“ legst du das Genre der nächsten Woche fest. Ohne Wahl entscheidet der Zufall.',
+      url: gameUrl(game, '/woche'), tag: `theme-${game.code}` });
+  }
 
   const names = players.filter((p) => winners.includes(p.id)).map((p) => p.name);
   console.log(`[Woche] ${game.code} Woche ${game.week_no} beendet. Sieger: ${names.join(', ') || '–'}`);
@@ -628,6 +877,11 @@ function tick(force = false) {
   }
   try { pushPayouts(paid); } catch (e) { console.error('[Push]', e); }
   try { morningPush(n); } catch (e) { console.error('[Push]', e); }
+  try { reminderPush(n); } catch (e) { console.error('[Push]', e); }
+  if (paid.length) { try { require('./stats').awardAll(paid.map((r) => r && r.game.id)); } catch (e) { console.error('[Abzeichen]', e); } }
+  if (n.hour >= cfg.BACKUP_HOUR && P.once(0, `backup:${n.date}`)) {
+    require('./backup').run().catch((e) => console.error('[Backup]', e.message));
+  }
   for (const g of db.prepare('SELECT * FROM games').all()) {
     g.genres = JSON.parse(g.genres);
     let guard = 0;
@@ -680,7 +934,9 @@ function overview(game, me) {
     days, weeks, requests: reqView, today: n.date, afterPayout: isAfterPayout(n),
     extra: extraView(game, me), push: P.countFor(me.id) > 0,
     rules: { perCorrect: cfg.POINTS_PER_CORRECT, perfectBonus: cfg.PERFECT_DAY_BONUS, weekBonus: cfg.WEEK_WIN_BONUS, payoutHour: cfg.PAYOUT_HOUR,
-      extraBefore: cfg.EXTRA_BEFORE_HOUR, extraQuestions: cfg.EXTRA_QUESTIONS },
+      extraBefore: cfg.EXTRA_BEFORE_HOUR, extraQuestions: cfg.EXTRA_QUESTIONS, maxStake: cfg.MAX_STAKE,
+      tempoSeconds: cfg.TEMPO_SECONDS, tempoBonus: cfg.TEMPO_BONUS, duelPoints: cfg.DUEL_POINTS, reminderHour: cfg.REMINDER_HOUR },
+    theme: themeView(game, me, players),
     msUntilPayout: T.msUntilHour(cfg.PAYOUT_HOUR),
   };
 }
@@ -695,30 +951,60 @@ function dayView(game, me, date, st, kind = 'day') {
 
   const players = gamePlayers(game.id);
   const reveal = !!day.paid;
-  const mine = answersOf(day.id, me.id);
+  const rows = answerRows(day.id, me.id);
+  const opens = opensOf(day.id, me.id);
   const myJokers = jokersOf(day.id, me.id);
+  const now = Date.now();
 
   const view = {
     ...base, genre: day.genre, week: day.week_no,
-    questions: day.questions.map((q, i) => ({
-      q: q.q, genre: q.genre, level: q.level || 2, options: q.options,
-      ...(reveal ? { answer: q.answer } : {}),
-      mine: mine[i] ?? null,
-      removed: myJokers.find((j) => j.idx === i)?.removed || [],
-    })),
+    questions: day.questions.map((q, i) => {
+      const a = rows[i];
+      const o = opens[i];
+      const visible = reveal || !!o || !!a;
+      const item = { type: q.type, genre: q.genre, level: q.level || 2, opened: !!o, answered: !!a,
+        stake: a ? a.stake : o ? o.stake : 0, mine: shownAnswer(q, a) };
+      if (!visible) return item; // Frage bleibt bis zum Aufdecken verborgen
+      Object.assign(item, { q: q.q, image: q.image || null,
+        removed: myJokers.find((j) => j.idx === i)?.removed || [] });
+      if (q.type === 'order') item.items = q.items; else item.options = q.options;
+      if (o && !a) item.elapsed = now - o.opened_at;
+      if (a) item.fast = a.ms != null && a.ms <= cfg.TEMPO_SECONDS * 1000;
+      if (reveal) Object.assign(item, { id: q.id, answer: q.answer, explain: q.explain || '', correct: isCorrect(q, a) });
+      return item;
+    }),
     jokers: { total: cfg.JOKERS_PER_DAY, left: Math.max(0, cfg.JOKERS_PER_DAY - myJokers.length) },
+    stake: { steps: stakeSteps(), available: stakeAvailable(game, me.id) },
+    tempo: { seconds: cfg.TEMPO_SECONDS, bonus: cfg.TEMPO_BONUS },
     progress: players.map((p) => ({
       id: p.id, name: p.name, avatar: p.avatar, me: p.id === me.id,
       answered: db.prepare('SELECT COUNT(*) AS c FROM answers WHERE day_id = ? AND player_id = ?').get(day.id, p.id).c,
-      total: day.questions.length,
+      total: day.questions.length, done: roundComplete(day, p.id),
     })),
   };
+
+  if (day.duel) {
+    const values = duelOf(day.id);
+    view.duel = { q: day.duel.q, unit: day.duel.unit, points: cfg.DUEL_POINTS, mine: values[me.id] ?? null };
+    if (reveal) {
+      const res = duelResult(day, players);
+      Object.assign(view.duel, { id: day.duel.id, answer: day.duel.answer, explain: day.duel.explain,
+        guesses: players.map((p) => ({ id: p.id, name: p.name, me: p.id === me.id, value: values[p.id] ?? null,
+          won: res.winners.includes(p.id) })) });
+    }
+  }
+
   if (reveal) {
     view.results = players.map((p) => {
-      const r = db.prepare('SELECT correct, total, points FROM results WHERE day_id = ? AND player_id = ?').get(day.id, p.id)
-        || { correct: 0, total: day.questions.length, points: 0 };
-      return { id: p.id, name: p.name, avatar: p.avatar, me: p.id === me.id, ...r,
-        answers: answersOf(day.id, p.id), jokers: jokersOf(day.id, p.id).map((j) => j.idx) };
+      const r = db.prepare('SELECT correct, total, points, detail FROM results WHERE day_id = ? AND player_id = ?').get(day.id, p.id)
+        || { correct: 0, total: day.questions.length, points: 0, detail: null };
+      const pr = answerRows(day.id, p.id);
+      return { id: p.id, name: p.name, avatar: p.avatar, me: p.id === me.id,
+        correct: r.correct, total: r.total, points: r.points, detail: r.detail ? JSON.parse(r.detail) : null,
+        answers: Object.fromEntries(Object.entries(pr).map(([i, a]) => [i, shownAnswer(day.questions[i], a)])),
+        stakes: Object.fromEntries(Object.entries(pr).map(([i, a]) => [i, a.stake])),
+        fast: Object.entries(pr).filter(([i, a]) => isCorrect(day.questions[i], a) && a.ms != null && a.ms <= cfg.TEMPO_SECONDS * 1000).map(([i]) => +i),
+        jokers: jokersOf(day.id, p.id).map((j) => j.idx) };
     });
   }
   return view;
@@ -743,6 +1029,7 @@ function notify(payload) {
 
 module.exports = {
   createPlayer, playerByToken, createGame, getGame, joinGame, isMember, gamesOfPlayer,
+  openQuestion, answerDuel, stakeAvailable, bank, loadOverrides, gamePlayers, getDay, isCorrect, answerRows,
   updateSettings, renamePlayer, setAvatar, clearAvatar, AVATAR_DIR, useJoker, requestDayAction, answerDayRequest, answerExtra,
   todayState, answer, tick, overview, dayView, ledgerOf, httpError,
 };

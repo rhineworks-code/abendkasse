@@ -10,6 +10,17 @@
   let me = null;
   let refreshTimer = null;
 
+  // ---------- Darstellung (Hell/Dunkel, Schriftgröße) ----------
+  function applyLook() {
+    const t = localStorage.getItem('ak_theme') || 'auto';
+    const dark = t === 'dark' || (t === 'auto' && !window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.dataset.font = localStorage.getItem('ak_font') || 'normal';
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#14122b' : '#f6f4fb');
+  }
+  applyLook();
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyLook);
+
   // ---------- Helfer ----------
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtDate = (d) => { const t = new Date(d + 'T12:00:00Z'); return `${WD[t.getUTCDay()]}, ${t.getUTCDate()}.${t.getUTCMonth() + 1}.`; };
@@ -124,6 +135,16 @@
     try { const sub = await currentSub(); if (sub && Notification.permission === 'granted') await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } }); } catch (e) { /* egal */ }
   }
 
+  // Stoppuhr für aufgedeckte Fragen: <span class="timer" data-start="ms" data-tempo="5">
+  setInterval(() => {
+    document.querySelectorAll('.timer[data-start]').forEach((el) => {
+      const s = (Date.now() - +el.dataset.start) / 1000;
+      const fast = s <= +el.dataset.tempo;
+      el.textContent = `${fast ? '⚡ ' : '⏱ '}${s.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
+      el.classList.toggle('fast', fast);
+    });
+  }, 100);
+
   // ---------- Router ----------
   window.addEventListener('hashchange', route);
 
@@ -142,6 +163,7 @@
       }
       if (parts[0] === 'g' && parts[1]) return viewGame(parts[1].toUpperCase(), parts[2] || 'heute', parts[3]);
       if (parts[0] === 'profil') return viewProfile();
+      if (parts[0] === 'meldungen') return viewReports();
       return viewLobby();
     } catch (e) {
       $app.innerHTML = `<div class="card"><b>Hoppla.</b><p class="muted">${esc(e.message)}</p><a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
@@ -210,6 +232,13 @@
           <button class="btn">Speichern</button>
         </form>
       </div>
+      <div class="card">
+        <h2 style="margin-top:0">🎨 Darstellung</h2>
+        <label class="lbl" style="margin-top:0">Design</label>
+        <div class="seg" id="thseg">${[['auto', 'Automatisch'], ['dark', 'Dunkel'], ['light', 'Hell']].map(([k, v]) => `<button type="button" data-t="${k}" class="${(localStorage.getItem('ak_theme') || 'auto') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+        <label class="lbl">Schriftgröße</label>
+        <div class="seg" id="ftseg">${[['normal', 'Normal'], ['large', 'Groß'], ['xlarge', 'Sehr groß']].map(([k, v]) => `<button type="button" data-f="${k}" class="${(localStorage.getItem('ak_font') || 'normal') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+      </div>
       <div class="card" id="pushcard">
         <h2 style="margin-top:0">🔔 Benachrichtigungen</h2>
         <div id="pushbox" class="muted small">Prüfe …</div>
@@ -221,6 +250,8 @@
         <div class="row" style="margin-top:14px"><a class="btn ghost" href="#/">Zurück</a><button class="btn ghost" id="lo">Abmelden</button></div>
       </div>`;
     renderPushBox();
+    document.querySelectorAll('#thseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_theme', b.dataset.t); applyLook(); viewProfile(); }));
+    document.querySelectorAll('#ftseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_font', b.dataset.f); applyLook(); viewProfile(); }));
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
     document.getElementById('lo').onclick = () => { if (confirm('Wirklich abmelden? Ohne Code kommst du nicht mehr an dein Konto.')) logout(); };
     document.getElementById('nf').onsubmit = async (ev) => {
@@ -288,6 +319,7 @@
 
     $app.innerHTML = `
       <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
+      ${me.canManage ? `<a class="notice muted-n" href="#/meldungen" style="color:var(--text)"><span>⚑ Gemeldete Fragen</span><span class="pill">${me.openReports} offen</span></a>` : ''}
       <h2>Deine Spiele</h2>
       <div class="gamelist">
         ${me.games.length ? me.games.map((g) => `
@@ -392,6 +424,7 @@
       <nav class="tabs">
         <a href="#/g/${code}" class="${tab === 'heute' || tab === 'extra' ? 'on' : ''}">Heute</a>
         <a href="#/g/${code}/woche" class="${tab === 'woche' || tab === 'tag' ? 'on' : ''}">Woche</a>
+        <a href="#/g/${code}/statistik" class="${tab === 'statistik' ? 'on' : ''}">Statistik</a>
         <a href="#/g/${code}/konto" class="${tab === 'konto' ? 'on' : ''}">Konto</a>
       </nav>
       <section id="tab"><div class="loading">Lädt …</div></section>`;
@@ -406,6 +439,7 @@
     if (tab === 'konto') return tabLedger($tab, g);
     if (tab === 'tag' && arg) return tabDay($tab, g, arg);
     if (tab === 'extra' && arg) return tabExtra($tab, g, arg);
+    if (tab === 'statistik') return tabStats($tab, g);
     return tabToday($tab, g);
   }
 
@@ -429,6 +463,11 @@
           ${r.mine ? `<button class="btn ghost small" data-req="${r.date}" data-ok="0">Zurückziehen</button>` : ''}
         </div>`);
       }
+    }
+    if (g.theme && g.theme.mode && !g.theme.theme && g.theme.canChoose) {
+      out.push(`<div class="notice extra"><div>🎯 <b>Themenwoche:</b> ${g.theme.chooser ? 'Du hast gewonnen – wähle' : 'Wählt'} das Thema dieser Woche.
+        <div class="small muted">Ohne Wahl entscheidet bei der ersten Runde der Zufall.</div></div>
+        <a class="btn small" href="#/g/${g.code}/woche">Thema wählen</a></div>`);
     }
     const x = g.extra;
     if (x) {
@@ -587,77 +626,159 @@
     return renderRound($tab, g, d, null);
   }
 
-  // Offene Runde spielen. date = null für heute, sonst Datum der Nachholrunde.
+  // Offene Runde spielen. date = null für heute, sonst Datum der Nachholrunde/Extrarunde.
+  const TYPE_LABEL = { mc: 'Multiple Choice', tf: 'Wahr oder falsch?', order: 'Reihenfolge', image: 'Bildfrage' };
   function renderRound($tab, g, d, date, kind = 'day') {
     const isExtra = kind === 'extra';
     const total = d.questions.length;
     const reload = () => (isExtra ? tabExtra($tab, g, date) : date ? tabDay($tab, g, date) : tabToday($tab, g));
     const until = Date.now() + d.msUntilPayout;
     const hh = String(d.payoutHour).padStart(2, '0') + ':00';
+    const target = { date, kind };
     const head = isExtra
       ? `<div class="notice extra"><div>🎲 <b>Extrarunde</b> <span class="small muted">– ${total} Zusatzfragen, Auflösung um ${hh} Uhr</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur Tagesrunde</a></div>`
       : date ? `<div class="notice replay"><div>🔁 <b>Nachholrunde für ${fmtDate(date)}</b> <span class="small muted">– ${dueText(g, d.due)}, danach Auflösung</span></div><a class="btn ghost small" href="#/g/${g.code}">Zur heutigen Runde</a></div>` : '';
-    const next = d.questions.findIndex((q) => q.mine === null);
+    const next = d.questions.findIndex((q) => !q.answered);
+    const dots = `<div class="dots">${d.questions.map((x, i) => `<i class="${x.answered ? 'a' : i === next ? 'c' : ''}"></i>`).join('')}${d.duel ? `<i class="duel-dot ${d.duel.mine !== null ? 'a' : next === -1 ? 'c' : ''}" title="Duell-Frage"></i>` : ''}</div>`;
     const progressHtml = `
       <div class="card"><h2 style="margin-top:0">Fortschritt ${isExtra ? 'Extrarunde' : date ? 'Nachholrunde' : 'heute'}</h2><div class="progress">
         ${d.progress.map((p) => `<div class="prog">${avatar(p, 26)}<span style="min-width:80px">${esc(p.name)}${p.me ? ' (du)' : ''}</span>
-          <span class="bar"><b style="width:${(p.answered / p.total) * 100}%"></b></span><span class="small muted">${p.answered}/${p.total}</span></div>`).join('')}
+          <span class="bar"><b style="width:${(p.answered / p.total) * 100}%"></b></span><span class="small muted">${p.done ? '✅' : `${p.answered}/${p.total}`}</span></div>`).join('')}
       </div></div>`;
 
-    if (next === -1) {
+    // ---- 1) Nächste Frage: erst Einsatz wählen, dann aufdecken ----
+    if (next !== -1) {
+      const q = d.questions[next];
+      const qhead = `<div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>`;
+      if (!q.opened) {
+        const avail = d.stake.available;
+        let stake = 0;
+        $tab.innerHTML = `${head}
+          <div class="card">
+            ${dots}${qhead}
+            <div class="typehint">${TYPE_LABEL[q.type] || 'Frage'}</div>
+            <h2 style="margin:6px 0 4px">Dein Einsatz</h2>
+            <p class="small muted" style="margin:0 0 12px">Richtig: Einsatz gewinnen · Falsch: Einsatz verlieren · Verfügbar: <b>${avail} P</b></p>
+            <div class="stakes">${d.stake.steps.map((v) => `<button class="stk ${v === 0 ? 'on' : ''}" data-v="${v}" ${v > avail ? 'disabled' : ''}>${v === 0 ? 'Ohne' : v + ' P'}</button>`).join('')}</div>
+            <button class="btn block" id="reveal" style="margin-top:14px">Frage aufdecken ⏱</button>
+            <p class="small muted" style="margin:10px 0 0">Ab dem Aufdecken läuft die Zeit – richtig in unter ${d.tempo.seconds} Sekunden gibt +${d.tempo.bonus} P.</p>
+          </div>
+          ${progressHtml}`;
+        $tab.querySelectorAll('.stk').forEach((b) => (b.onclick = () => {
+          stake = +b.dataset.v;
+          $tab.querySelectorAll('.stk').forEach((x) => x.classList.toggle('on', x === b));
+        }));
+        document.getElementById('reveal').onclick = async (ev) => {
+          ev.target.disabled = true;
+          try { await api(`/games/${g.code}/open`, { method: 'POST', body: { ...target, idx: next, stake } }); reload(); }
+          catch (e) { toast(e.message, true); ev.target.disabled = false; }
+        };
+        return;
+      }
+
+      const start = Date.now() - (q.elapsed || 0);
+      const stakePill = q.stake ? `<span class="pill stake">Einsatz ${q.stake} P</span>` : '';
+      const canJoker = q.type !== 'order' && q.type !== 'tf' && q.options && q.options.length >= 4;
+      const jokerHtml = !canJoker ? '' : q.removed.length ? '<span class="joker used">50:50 aktiv</span>'
+        : d.jokers.left > 0 ? `<button class="joker" id="joker" title="Entfernt zwei falsche Antworten">50:50 <small>${d.jokers.left}×</small></button>`
+        : '<span class="joker used">Joker verbraucht</span>';
+      let answerHtml;
+      if (q.type === 'order') {
+        answerHtml = `<p class="small muted" style="margin:0 0 10px">Tippe die Einträge in der richtigen Reihenfolge an.</p>
+          <div class="opts" id="orderopts">${q.items.map((it, i) => `<button class="opt ord" data-i="${i}"><span class="k">·</span><span>${esc(it)}</span></button>`).join('')}</div>
+          <div class="row" style="margin-top:12px"><button class="btn ghost small" id="ordreset">Zurücksetzen</button><button class="btn small" id="ordsend" disabled>Antwort abgeben</button></div>`;
+      } else {
+        answerHtml = `<div class="opts ${q.type === 'tf' ? 'tf' : ''}">${q.options.map((o, i) => q.removed.includes(i)
+          ? `<button class="opt gone" disabled><span class="k">${KEYS[i]}</span><span>${esc(o)}</span></button>`
+          : `<button class="opt" data-i="${i}">${q.type === 'tf' ? '' : `<span class="k">${KEYS[i]}</span>`}<span>${esc(o)}</span></button>`).join('')}</div>`;
+      }
       $tab.innerHTML = `${head}
-        <div class="card center hero">
-          <div class="big">🔒</div>
-          <h2>Alle ${total} Antworten sind abgegeben</h2>
-          <p class="muted">Die Kasse öffnet ${!isExtra && date && d.due !== g.today ? 'am ' + fmtDate(d.due) + ' ' : ''}um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
-          ${isExtra || !date || d.due === g.today ? `<div class="countdown" data-until="${until}">--:--:--</div>` : ''}
+        <div class="card">
+          ${dots}${qhead}
+          <div class="spread" style="margin-bottom:6px"><span class="timer" data-start="${start}" data-tempo="${d.tempo.seconds}">0,0 s</span>${stakePill}</div>
+          ${q.image ? `<img class="qimg" src="${esc(q.image)}" alt="Bild zur Frage">` : ''}
+          <div class="qtext">${esc(q.q)}</div>
+          ${answerHtml}
+          <div class="spread" style="margin-top:14px">
+            <p class="small muted" style="margin:0">Jede Antwort ist endgültig. Aufgelöst wird um ${hh} Uhr.</p>
+            ${jokerHtml}
+          </div>
         </div>
-        ${progressHtml}
-        <div class="card"><h2 style="margin-top:0">Deine Tipps</h2>
-          ${d.questions.map((q, i) => `<div style="margin-bottom:10px"><div class="small muted">${i + 1}. ${esc(q.genre)}</div><div>${esc(q.q)}</div><div class="pts">→ ${esc(q.options[q.mine])}</div></div>`).join('')}
-        </div>`;
-      refreshTimer = setInterval(async () => {
-        try { const x = await api(isExtra ? `/games/${g.code}/extra/${date}` : date ? `/games/${g.code}/days/${date}` : `/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
-      }, 30000);
+        ${progressHtml}`;
+
+      const send = async (body) => {
+        try {
+          const r = await api(`/games/${g.code}/answer`, { method: 'POST', body: { ...target, idx: next, ...body } });
+          if (r.fast) toast(`⚡ Unter ${d.tempo.seconds} Sekunden!`);
+          setTimeout(next === total - 1 && !d.duel ? route : reload, 350);
+        } catch (e) { toast(e.message, true); setTimeout(route, 1200); }
+      };
+      const jb = document.getElementById('joker');
+      if (jb) jb.onclick = async () => {
+        if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Runde.')) return;
+        try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { ...target, idx: next } }); reload(); }
+        catch (e) { toast(e.message, true); }
+      };
+      if (q.type === 'order') {
+        let picked = [];
+        const btns = [...$tab.querySelectorAll('.ord')];
+        const paint = () => {
+          btns.forEach((b) => { const pos = picked.indexOf(+b.dataset.i); b.classList.toggle('picked', pos >= 0); b.querySelector('.k').textContent = pos >= 0 ? pos + 1 : '·'; });
+          document.getElementById('ordsend').disabled = picked.length !== btns.length;
+        };
+        btns.forEach((b) => (b.onclick = () => { const i = +b.dataset.i; if (!picked.includes(i)) picked.push(i); else picked = picked.filter((x) => x !== i); paint(); }));
+        document.getElementById('ordreset').onclick = () => { picked = []; paint(); };
+        document.getElementById('ordsend').onclick = (ev) => { ev.target.disabled = true; send({ order: picked }); };
+      } else {
+        $tab.querySelectorAll('.opt:not(.gone)').forEach((b) => (b.onclick = () => {
+          $tab.querySelectorAll('.opt').forEach((x) => (x.disabled = true));
+          b.classList.add('picked');
+          send({ choice: +b.dataset.i });
+        }));
+      }
       return;
     }
 
-    const q = d.questions[next];
+    // ---- 2) Duell-Frage des Tages ----
+    if (d.duel && d.duel.mine === null) {
+      $tab.innerHTML = `${head}
+        <div class="card duel">
+          ${dots}
+          <div class="qhead"><span>⚔️ Duell-Frage des Tages</span><span>+${d.duel.points} P für den Näheren</span></div>
+          <div class="qtext">${esc(d.duel.q)}</div>
+          <form id="duelf" class="row">
+            <input class="grow" type="text" inputmode="decimal" name="v" placeholder="Deine Schätzung" autocomplete="off" required>
+            ${d.duel.unit ? `<span class="unit">${esc(d.duel.unit)}</span>` : ''}
+            <button class="btn">Schätzen</button>
+          </form>
+          <p class="small muted" style="margin:10px 0 0">Eine Schätzung, kein Zeitlimit. Wer näher an der richtigen Zahl liegt, gewinnt.</p>
+        </div>
+        ${progressHtml}`;
+      document.getElementById('duelf').onsubmit = async (ev) => {
+        ev.preventDefault();
+        try { await api(`/games/${g.code}/duel`, { method: 'POST', body: { value: ev.target.v.value, date } }); route(); }
+        catch (e) { toast(e.message, true); }
+      };
+      return;
+    }
+
+    // ---- 3) Alles erledigt ----
+    const tip = (q) => (q.type === 'order' ? (q.mine || []).map((i) => esc(q.items[i])).join(' → ') : esc(q.options[q.mine]));
     $tab.innerHTML = `${head}
-      <div class="card">
-        <div class="dots">${d.questions.map((x, i) => `<i class="${x.mine !== null ? 'a' : i === next ? 'c' : ''}"></i>`).join('')}</div>
-        <div class="qhead"><span>Frage ${next + 1} von ${total}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>
-        <div class="qtext">${esc(q.q)}</div>
-        <div class="opts">
-          ${q.options.map((o, i) => q.removed.includes(i)
-            ? `<button class="opt gone" disabled><span class="k">${KEYS[i]}</span><span>${esc(o)}</span></button>`
-            : `<button class="opt" data-i="${i}"><span class="k">${KEYS[i]}</span><span>${esc(o)}</span></button>`).join('')}
-        </div>
-        <div class="spread" style="margin-top:14px">
-          <p class="small muted" style="margin:0">Jede Antwort ist endgültig. Aufgelöst wird um ${hh} Uhr.</p>
-          ${q.removed.length ? '<span class="joker used">50:50 aktiv</span>'
-            : d.jokers.left > 0 ? `<button class="joker" id="joker" title="Entfernt zwei falsche Antworten">50:50 <small>${d.jokers.left}×</small></button>`
-            : '<span class="joker used">Joker verbraucht</span>'}
-        </div>
+      <div class="card center hero">
+        <div class="big">🔒</div>
+        <h2>Alle Antworten sind abgegeben</h2>
+        <p class="muted">Die Kasse öffnet ${!isExtra && date && d.due !== g.today ? 'am ' + fmtDate(d.due) + ' ' : ''}um ${hh} Uhr – dann siehst du, wie viele richtig waren.</p>
+        ${isExtra || !date || d.due === g.today ? `<div class="countdown" data-until="${until}">--:--:--</div>` : ''}
       </div>
-      ${progressHtml}`;
-
-    const jb = document.getElementById('joker');
-    if (jb) jb.onclick = async () => {
-      if (!confirm('50:50-Joker für diese Frage einsetzen? Du hast nur einen pro Runde.')) return;
-      try { await api(`/games/${g.code}/joker`, { method: 'POST', body: { idx: next, date, kind } }); reload(); }
-      catch (e) { toast(e.message, true); }
-    };
-
-    $tab.querySelectorAll('.opt:not(.gone)').forEach((b) => (b.onclick = async () => {
-      $tab.querySelectorAll('.opt').forEach((x) => (x.disabled = true));
-      b.classList.add('picked');
-      try {
-        await api(`/games/${g.code}/answer`, { method: 'POST', body: { idx: next, choice: +b.dataset.i, date, kind } });
-        // Letzte Frage: ganze Ansicht neu laden (Extrarunden-Angebot, Fortschritt des Partners)
-        setTimeout(next === total - 1 ? route : reload, 350);
-      } catch (e) { toast(e.message, true); setTimeout(route, 1200); }
-    }));
+      ${progressHtml}
+      <div class="card"><h2 style="margin-top:0">Deine Tipps</h2>
+        ${d.questions.map((q, i) => `<div class="tiprow"><div class="small muted">${i + 1}. ${esc(q.genre)} ${q.stake ? `<span class="pill stake">${q.stake} P</span>` : ''} ${q.fast ? '⚡' : ''}</div><div>${esc(q.q)}</div><div class="pts">→ ${tip(q)}</div></div>`).join('')}
+        ${d.duel ? `<div class="tiprow"><div class="small muted">⚔️ Duell-Frage</div><div>${esc(d.duel.q)}</div><div class="pts">→ ${fmtNum(d.duel.mine)} ${esc(d.duel.unit || '')}</div></div>` : ''}
+      </div>`;
+    refreshTimer = setInterval(async () => {
+      try { const x = await api(isExtra ? `/games/${g.code}/extra/${date}` : date ? `/games/${g.code}/days/${date}` : `/games/${g.code}/today`); if (x.state !== 'open' || JSON.stringify(x.progress) !== JSON.stringify(d.progress)) route(); } catch (e) { /* still */ }
+    }, 30000);
   }
 
   // ----- Auflösung -----
@@ -670,41 +791,118 @@
     const others = d.results.filter((r) => !r.me);
     const mine = d.results.find((r) => r.me);
     const best = Math.max(...d.results.map((r) => r.points));
+    const kind = d.kind === 'extra' ? 'extra' : 'day';
+    const chips = (x) => !x ? '' : [
+      x.base ? `<span class="chip-s">${x.correct}× richtig +${x.base}</span>` : '',
+      x.perfect ? `<span class="chip-s">Perfekt +${x.perfect}</span>` : '',
+      x.tempo ? `<span class="chip-s">⚡ ${x.tempoCount}× +${x.tempo}</span>` : '',
+      x.stakeNet ? `<span class="chip-s ${x.stakeNet < 0 ? 'neg' : ''}">Einsätze ${sign(x.stakeNet)}</span>` : '',
+      x.duel ? `<span class="chip-s">⚔️ +${x.duel}</span>` : '',
+    ].join('');
+    const marks = (i) => d.results.map((r) => [
+      r.stakes[i] ? `<span class="mk ${r.me ? 'me' : 'fr'}">${r.me ? 'du' : esc(r.name)}: ${ansOk(d.questions[i], r.answers[i]) ? '+' : '−'}${r.stakes[i]} P</span>` : '',
+      r.fast.includes(i) ? `<span class="mk ${r.me ? 'me' : 'fr'}">⚡ ${r.me ? 'du' : esc(r.name)}</span>` : '',
+      r.jokers.includes(i) ? `<span class="mk ${r.me ? 'me' : 'fr'}">50:50 ${r.me ? 'du' : esc(r.name)}</span>` : '',
+    ].join('')).join('');
+
+    const duelHtml = !d.duel ? '' : `
+      <div class="card duel">
+        <div class="qhead"><span>⚔️ Duell-Frage des Tages</span><button class="rep" data-idx="duel">⚑ Melden</button></div>
+        <div class="qtext">${esc(d.duel.q)}</div>
+        <div class="duelans">Richtig: <b>${fmtNum(d.duel.answer)} ${esc(d.duel.unit || '')}</b></div>
+        ${d.duel.guesses.map((x) => `<div class="prog">${avatar(x, 24)}<span style="min-width:80px">${esc(x.name)}${x.me ? ' (du)' : ''}</span>
+          <span class="grow">${x.value === null ? '<span class="muted">nicht geschätzt</span>' : `${fmtNum(x.value)} <span class="small muted">(${devText(x.value, d.duel.answer)})</span>`}</span>
+          ${x.won ? `<span class="pts">♛ +${Math.round(d.duel.guesses.filter((y) => y.won).length > 1 ? g.rules.duelPoints / d.duel.guesses.filter((y) => y.won).length : g.rules.duelPoints)}</span>` : ''}</div>`).join('')}
+        ${d.duel.explain ? `<div class="explain">💡 ${esc(d.duel.explain)}</div>` : ''}
+      </div>`;
 
     $tab.innerHTML = `
       <div class="card center hero">
         <div class="small muted">${d.kind === 'extra' ? '🎲 Extrarunde vom ' + fmtDate(d.date) : isToday ? 'Heutige Auszahlung' : (d.replay ? 'Nachholrunde für ' : 'Auszahlung vom ') + fmtDate(d.date)}</div>
-        <div class="row" style="justify-content:center; gap:24px; margin-top:10px">
+        <div class="row" style="justify-content:center; gap:24px; margin-top:10px; align-items:flex-start">
           ${d.results.map((r) => `
-            <div>
+            <div style="max-width:220px">
               <div>${avatar(r, 56)}</div>
               <div class="small" style="color:${r.me ? 'var(--me)' : 'var(--friend)'}">${esc(r.name)} ${r.points === best && best > 0 ? '♛' : ''}</div>
               <div class="big">${r.correct}/${r.total}</div>
               <div class="pts">${sign(r.points)} P</div>
+              <div class="chips-s">${chips(r.detail)}</div>
             </div>`).join('')}
         </div>
         ${isToday && g.extra && g.extra.status === 'paid' ? `<a class="btn ghost small" style="margin-top:12px" href="#/g/${g.code}/extra/${d.date}">🎲 Extrarunde ansehen</a>` : ''}
         ${isToday ? '<p class="muted small" style="margin-top:12px">Morgen gibt es neue Fragen.</p>' : ''}
       </div>
+      ${duelHtml}
       ${d.questions.map((q, i) => {
         const my = mine ? mine.answers[i] : undefined;
-        return `
-        <div class="card">
-          <div class="qhead"><span>Frage ${i + 1} ${d.results.filter((r) => r.jokers.includes(i)).map((r) => `<span class="mk ${r.me ? 'me' : 'fr'}">50:50 ${r.me ? 'du' : esc(r.name)}</span>`).join(' ')}</span><span>${esc(q.genre)} ${levelBadge(q.level)}</span></div>
-          <div class="qtext">${esc(q.q)}</div>
-          <div class="opts">
+        let body;
+        if (q.type === 'order') {
+          const seq = (arr) => (arr || []).map((k) => esc(q.items[k])).join(' → ');
+          body = `<div class="orderans"><div class="small muted">Richtig:</div><ol>${q.answer.map((k) => `<li>${esc(q.items[k])}</li>`).join('')}</ol></div>
+            ${d.results.map((r) => `<div class="small" style="margin-top:6px"><b style="color:${r.me ? 'var(--me)' : 'var(--friend)'}">${r.me ? 'Du' : esc(r.name)}:</b> ${r.answers[i] ? `${seq(r.answers[i])} ${orderOk(q, r.answers[i]) ? '✅' : '❌'}` : '<span class="muted">nicht beantwortet</span>'}</div>`).join('')}`;
+        } else {
+          body = `<div class="opts ${q.type === 'tf' ? 'tf' : ''}">
             ${q.options.map((o, oi) => {
               const cls = oi === q.answer ? 'right' : oi === my ? 'wrong' : '';
-              const marks = [
-                my === oi ? `<span class="mk me">du</span>` : '',
-                ...others.filter((r) => r.answers[i] === oi).map((r) => `<span class="mk fr">${esc(r.name)}</span>`),
-              ].join('');
-              return `<button class="opt ${cls}" disabled><span class="k">${KEYS[oi]}</span><span>${esc(o)}</span><span class="marks">${marks}</span></button>`;
+              const mk = [my === oi ? '<span class="mk me">du</span>' : '', ...others.filter((r) => r.answers[i] === oi).map((r) => `<span class="mk fr">${esc(r.name)}</span>`)].join('');
+              return `<button class="opt ${cls}" disabled>${q.type === 'tf' ? '' : `<span class="k">${KEYS[oi]}</span>`}<span>${esc(o)}</span><span class="marks">${mk}</span></button>`;
             }).join('')}
-          </div>
-          ${my === undefined ? '<p class="small muted" style="margin:10px 0 0">Nicht beantwortet</p>' : ''}
+          </div>`;
+        }
+        return `
+        <div class="card">
+          <div class="qhead"><span>Frage ${i + 1} · ${esc(q.genre)} ${levelBadge(q.level)}</span><button class="rep" data-idx="${i}">⚑ Melden</button></div>
+          <div class="marks-row">${marks(i)}</div>
+          ${q.image ? `<img class="qimg" src="${esc(q.image)}" alt="">` : ''}
+          <div class="qtext">${esc(q.q)}</div>
+          ${body}
+          ${my === undefined || my === null ? '<p class="small muted" style="margin:10px 0 0">Nicht beantwortet</p>' : ''}
+          ${q.explain ? `<div class="explain">💡 ${esc(q.explain)}</div>` : ''}
         </div>`;
       }).join('')}`;
+    $tab.querySelectorAll('.rep').forEach((b) => (b.onclick = () => openReport(g, d.date, kind, b.dataset.idx)));
+  }
+
+  const ansOk = (q, a) => (q.type === 'order' ? orderOk(q, a) : a !== undefined && a !== null && a === q.answer);
+  const orderOk = (q, a) => Array.isArray(a) && Array.isArray(q.answer) && a.length === q.answer.length && a.every((v, i) => v === q.answer[i]);
+  const fmtNum = (n) => (n === null || n === undefined ? '–' : Number(n).toLocaleString('de-DE', { maximumFractionDigits: 3 }));
+  const devText = (v, a) => {
+    const diff = v - a;
+    if (diff === 0) return 'exakt!';
+    const pct = a ? Math.abs(diff / a) * 100 : null;
+    return `${diff > 0 ? '+' : '−'}${fmtNum(Math.abs(diff))}${pct !== null ? `, ${pct < 10 ? pct.toLocaleString('de-DE', { maximumFractionDigits: 1 }) : Math.round(pct)} %` : ''}`;
+  };
+
+  // Frage melden
+  const REPORT_REASONS = { wrong: 'Antwort ist falsch', hard: 'Zu schwer', easy: 'Zu leicht', unclear: 'Unklar formuliert', other: 'Sonstiges' };
+  function openReport(g, date, kind, idx) {
+    let reason = null;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `
+      <div class="sheet" role="dialog" aria-label="Frage melden">
+        <div class="spread"><h2 style="margin:0">⚑ Frage melden</h2><button class="x" aria-label="Schließen">✕</button></div>
+        <p class="muted small">Die Meldung landet in der Liste des Spielleiters. Er kann die Frage korrigieren, die Stufe ändern oder sie aussortieren.</p>
+        <div class="chips">${Object.entries(REPORT_REASONS).map(([k, v]) => `<span class="chip" data-r="${k}">${v}</span>`).join('')}</div>
+        <label class="lbl">Kommentar (optional)</label>
+        <input type="text" id="rcomment" maxlength="300" placeholder="z. B. richtige Antwort wäre …">
+        <button class="btn block" id="rsend" style="margin-top:14px" disabled>Meldung senden</button>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.onclick = (ev) => { if (ev.target === wrap) close(); };
+    wrap.querySelector('.x').onclick = close;
+    wrap.querySelectorAll('[data-r]').forEach((c) => (c.onclick = () => {
+      reason = c.dataset.r;
+      wrap.querySelectorAll('[data-r]').forEach((x) => x.classList.toggle('on', x === c));
+      wrap.querySelector('#rsend').disabled = false;
+    }));
+    wrap.querySelector('#rsend').onclick = async () => {
+      try {
+        await api(`/games/${g.code}/report`, { method: 'POST', body: { date, kind, idx: idx === 'duel' ? 'duel' : +idx, reason, comment: wrap.querySelector('#rcomment').value } });
+        close(); toast('Danke! Die Frage wurde gemeldet.');
+      } catch (e) { toast(e.message, true); }
+    };
   }
 
   async function tabExtra($tab, g, date) {
@@ -755,6 +953,16 @@
       </div>
 
       <div class="card">
+        <div class="spread"><h2 style="margin:0">🎯 Themenwoche</h2>
+          <label class="switch"><input type="checkbox" id="thmode" ${g.theme.mode ? 'checked' : ''}><span></span></label></div>
+        <p class="small muted" style="margin:6px 0 10px">Eine Woche lang nur ein Genre. Der Wochensieger wählt das Thema der nächsten Woche, sonst entscheidet der Zufall.</p>
+        ${!g.theme.mode ? '' : g.theme.theme
+          ? `<p style="margin:0">Thema dieser Woche: <b>${esc(g.theme.theme)}</b> ${g.theme.locked ? '<span class="small muted">(steht fest)</span>' : ''}</p>` : ''}
+        ${g.theme.mode && g.theme.canChoose ? `<div class="chips" style="margin-top:10px">${g.genres.map((x) => `<span class="chip ${x === g.theme.theme ? 'on' : ''}" data-theme="${esc(x)}">${esc(x)}</span>`).join('')}</div>`
+          : g.theme.mode && !g.theme.theme && g.theme.chooser ? `<p class="small muted" style="margin:0">${esc(g.theme.chooser)} wählt das Thema.</p>` : ''}
+      </div>
+
+      <div class="card">
         <h2 style="margin-top:0">Schwierigkeit</h2>
         ${diffSeg('gdiff', g.difficulty)}
         <p class="small muted" style="margin:8px 0 0">Gilt ab der nächsten neuen Runde – bereits gestellte Fragen bleiben.</p>
@@ -765,6 +973,8 @@
         +${g.rules.weekBonus} P für den Wochensieg · ein 50:50-Joker pro Tag · Auszahlung täglich ${g.rules.payoutHour}:00 Uhr.
         Mit ↻ lässt sich ein vergangener Tag dieser Woche wiederholen oder streichen, wenn alle zustimmen.
         Seid ihr beide vor ${String(g.rules.extraBefore).padStart(2, '0')}:00 Uhr fertig, gibt es auf Wunsch eine Extrarunde mit ${g.rules.extraQuestions} Fragen.
+        Vor jeder Frage kannst du bis zu ${g.rules.maxStake} P setzen · richtig in unter ${g.rules.tempoSeconds} s: +${g.rules.tempoBonus} P ·
+        Duell-Frage: +${g.rules.duelPoints} P für die beste Schätzung · Erinnerung um ${g.rules.reminderHour} Uhr.
         Genres: ${g.genres.map(esc).join(', ')} (${g.mode === 'daily' ? 'ein Genre pro Tag' : 'gemischt'}, ${g.perDay} Fragen/Tag).
       </div>
 
@@ -775,12 +985,115 @@
         <span class="muted small">(${Object.entries(w.scores).map(([id, s]) => `${esc(byId[id]?.name || '?')} ${s}`).join(' : ')})</span></span></div>`).join('')}</div>`
         : '<p class="muted">Noch keine abgeschlossene Woche.</p>'}`;
 
+    const thm = document.getElementById('thmode');
+    if (thm) thm.onchange = async () => {
+      try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { themeMode: thm.checked } }); toast(thm.checked ? 'Themenwoche an' : 'Themenwoche aus'); route(); }
+      catch (e) { toast(e.message, true); thm.checked = !thm.checked; }
+    };
+    $tab.querySelectorAll('[data-theme]').forEach((c) => (c.onclick = async () => {
+      if (!confirm(`„${c.dataset.theme}“ als Thema dieser Woche festlegen?`)) return;
+      try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { theme: c.dataset.theme } }); toast(`Thema: ${c.dataset.theme}`); route(); }
+      catch (e) { toast(e.message, true); }
+    }));
     bindDiffSeg('gdiff', async (d) => {
       try { await api(`/games/${g.code}/settings`, { method: 'PUT', body: { difficulty: d } }); g.difficulty = d; toast(`Schwierigkeit: ${DIFF[d].label} – ab der nächsten Runde`); }
       catch (e) { toast(e.message, true); }
     });
     $tab.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () =>
       openDayAction(g, b.dataset.act, g.days.find((x) => x.date === b.dataset.act && x.kind !== 'extra'))));
+  }
+
+  // ----- Tab: Statistik -----
+  async function tabStats($tab, g) {
+    const st = await api(`/games/${g.code}/stats`);
+    const me_ = st.players.find((p) => p.me) || st.players[0];
+    const others = st.players.filter((p) => p !== me_);
+    const pct = (x) => (x && x.rate !== null && x.rate !== undefined ? `${x.rate} %` : '–');
+    const bar = (x, cls) => `<span class="sbar ${cls}"><b style="width:${x && x.rate ? x.rate : 0}%"></b></span>`;
+    const row = (label, get) => `<div class="srow"><span class="slabel">${label}</span>${st.players.map((p) => `<span class="sval ${p.me ? 'me' : 'fr'}">${get(p)}</span>`).join('')}</div>`;
+    const LV = { 1: 'Leicht', 2: 'Mittel', 3: 'Schwer' };
+    const TY = { mc: 'Multiple Choice', tf: 'Wahr/Falsch', order: 'Reihenfolge', image: 'Bildfragen' };
+
+    // Wochenverlauf als kleine Balkengrafik
+    const hist = st.history.slice(-10);
+    const maxPts = Math.max(10, ...hist.flatMap((w) => st.players.map((p) => w.scores[p.id] || 0)));
+    const chart = `<svg viewBox="0 0 ${hist.length * 46 + 10} 150" class="chart" role="img" aria-label="Punkte pro Woche">
+      ${hist.map((w, wi) => st.players.map((p, pi) => {
+        const v = Math.max(0, w.scores[p.id] || 0); const h = Math.round((v / maxPts) * 110);
+        return `<rect x="${wi * 46 + 10 + pi * 16}" y="${120 - h}" width="14" height="${h}" rx="3" class="${p.me ? 'c-me' : 'c-fr'}" opacity="${w.done ? 1 : 0.55}"><title>${esc(p.name)}: ${w.scores[p.id] || 0} P</title></rect>`;
+      }).join('') + `<text x="${wi * 46 + 10 + st.players.length * 8}" y="140" text-anchor="middle" class="c-lbl">W${w.week}</text>`).join('')}
+    </svg>`;
+
+    $tab.innerHTML = `
+      ${st.insights.length ? `<div class="card"><h2 style="margin-top:0">Auf einen Blick</h2>${st.insights.map((i) => `<div class="insight ${i.good ? 'good' : ''}">${i.good ? '💪' : '📚'} ${esc(i.text)}</div>`).join('')}</div>` : ''}
+
+      <div class="card">
+        <div class="srow head"><span class="slabel"></span>${st.players.map((p) => `<span class="sval ${p.me ? 'me' : 'fr'}">${avatar(p, 28)}<br>${esc(p.name)}</span>`).join('')}</div>
+        ${row('Trefferquote', (p) => `<b class="big2">${pct(p.total)}</b><div class="small muted">${p.total.c}/${p.total.n}</div>`)}
+        ${row('Wochensiege', (p) => `<b>${p.weekWins}</b>`)}
+        ${row('Tagessiege', (p) => `<b>${p.dayWins}</b>${p.draws ? ` <span class="small muted">(${p.draws} remis)</span>` : ''}`)}
+        ${row('Serie aktuell / beste', (p) => `🔥 <b>${p.streak.current}</b> / ${p.streak.longest}`)}
+        ${row('Gespielte Tage', (p) => `${p.daysPlayed}`)}
+        ${row('Perfekte Runden', (p) => `${p.perfectDays}`)}
+        ${row('Duelle gewonnen', (p) => `${p.duelsWon}/${p.duels}`)}
+        ${row('Tempo-Boni', (p) => `⚡ ${p.tempo}`)}
+        ${row('Einsätze', (p) => (p.stakeWon || p.stakeLost ? `<span class="pos">+${p.stakeWon}</span> / <span class="neg">−${p.stakeLost}</span>` : '–'))}
+        ${row('Punkte gesamt', (p) => `<b class="pts">${p.points}</b>`)}
+      </div>
+
+      <div class="card"><h2 style="margin-top:0">Punkte pro Woche</h2>${chart}
+        <div class="legend">${st.players.map((p) => `<span><i class="${p.me ? 'c-me' : 'c-fr'}"></i>${esc(p.name)}</span>`).join('')}</div></div>
+
+      <div class="card"><h2 style="margin-top:0">Trefferquote nach Genre</h2>
+        ${st.genres.map((gn) => `<div class="gstat"><div class="small">${esc(gn)}</div>${st.players.map((p) => `<div class="gline">${bar(p.genres[gn], p.me ? 'me' : 'fr')}<span class="small ${p.me ? '' : 'muted'}">${pct(p.genres[gn])}</span></div>`).join('')}</div>`).join('')}
+      </div>
+
+      <div class="card"><h2 style="margin-top:0">Nach Schwierigkeit & Fragetyp</h2>
+        ${[1, 2, 3].map((l) => row(`${LV[l]} ${levelBadge(l)}`, (p) => pct(p.levels[l]))).join('')}
+        ${Object.keys(TY).map((t) => row(TY[t], (p) => pct(p.types[t]))).join('')}
+      </div>
+
+      <div class="card"><h2 style="margin-top:0">Abzeichen</h2>
+        <div class="badges">${me_.badges.map((b) => `<div class="badge ${b.earned ? 'on' : ''}" title="${esc(b.desc)}">
+          <div class="bicon">${b.icon}</div><div class="btitle">${esc(b.title)}</div>
+          <div class="small muted">${b.earned ? 'erreicht ' + new Date(b.earned.replace(' ', 'T') + 'Z').toLocaleDateString('de-DE') : `${b.progress}/${b.goal}`}</div>
+          ${b.earned ? '' : `<span class="sbar"><b style="width:${(b.progress / b.goal) * 100}%"></b></span>`}</div>`).join('')}</div>
+        ${others.map((o) => `<p class="small muted" style="margin:12px 0 0">${esc(o.name)} hat ${o.badges.filter((b) => b.earned).length} von ${o.badges.length} Abzeichen: ${o.badges.filter((b) => b.earned).map((b) => b.icon).join(' ') || '–'}</p>`).join('')}
+      </div>`;
+  }
+
+  // ----- Meldungen (Spielleiter) -----
+  async function viewReports(status = 'open') {
+    const r = await api(`/reports?status=${status}`);
+    $app.innerHTML = `
+      <div class="spread"><h1>⚑ Gemeldete Fragen</h1><a href="#/" class="small">Zurück</a></div>
+      <div class="seg" style="margin:10px 0 16px"><button data-s="open" class="${status === 'open' ? 'on' : ''}">Offen</button><button data-s="done" class="${status === 'done' ? 'on' : ''}">Erledigt</button></div>
+      ${r.items.length ? '' : `<p class="muted">${status === 'open' ? 'Keine offenen Meldungen. 🎉' : 'Noch nichts erledigt.'}</p>`}
+      ${r.items.map((it, n) => {
+        const q = it.question;
+        const answer = q.type === 'estimate' ? `${q.answer} ${q.unit || ''}` : q.type === 'order' ? (q.answer || []).map((k) => q.items[k]).join(' → ') : (q.options || [])[q.answer];
+        return `<div class="card">
+          <div class="qhead"><span>${esc(q.genre || '')} ${q.type === 'estimate' ? '<span class="pill">Duell-Schätzfrage</span>' : levelBadge(it.level)} ${it.disabled ? '<span class="pill">deaktiviert</span>' : ''}</span><span class="small muted">${esc(it.qid)}</span></div>
+          <div class="qtext">${esc(q.q)}</div>
+          <div class="small">Richtige Antwort laut Katalog: <b>${esc(answer)}</b></div>
+          <div class="small muted" style="margin-top:4px">Bisher ${it.stats.correct}/${it.stats.answered} richtig beantwortet${it.stats.answered ? ` (${Math.round((it.stats.correct / it.stats.answered) * 100)} %)` : ''}</div>
+          <div style="margin:10px 0">${it.reports.map((x) => `<div class="small">• <b>${esc(x.reasonText)}</b> – ${esc(x.by || '?')}${x.comment ? `: „${esc(x.comment)}“` : ''}</div>`).join('')}</div>
+          ${status === 'open' && it.inCatalog ? `<div class="row">
+            ${q.type === 'estimate' ? '' : `<span class="small muted">Stufe:</span>
+            ${[1, 2, 3].map((l) => `<button class="btn ghost small ${it.level === l ? 'onlv' : ''}" data-n="${n}" data-lv="${l}">${levelBadge(l)}</button>`).join('')}`}
+            <button class="btn ghost small" data-n="${n}" data-dis="1">Aussortieren</button>
+            <button class="btn small" data-n="${n}" data-ok="1">Erledigt</button>
+          </div>` : status === 'open' ? `<button class="btn small" data-n="${n}" data-ok="1">Erledigt</button>` : ''}
+        </div>`;
+      }).join('')}
+      <p class="small muted">Tipp: Falsche Antworten korrigierst du dauerhaft in der JSON-Datei im Ordner <code>questions/</code> bzw. <code>data/questions/</code>. „Aussortieren“ nimmt die Frage sofort aus dem Spiel.</p>`;
+    $app.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => viewReports(b.dataset.s)));
+    $app.querySelectorAll('[data-n]').forEach((b) => (b.onclick = async () => {
+      const it = r.items[+b.dataset.n];
+      const body = b.dataset.lv ? { level: +b.dataset.lv } : b.dataset.dis ? { disabled: true } : { dismiss: true };
+      try { await api(`/reports/${encodeURIComponent(it.qid)}`, { method: 'POST', body }); toast(b.dataset.lv ? 'Stufe geändert' : b.dataset.dis ? 'Frage aussortiert' : 'Erledigt'); viewReports(status); }
+      catch (e) { toast(e.message, true); }
+    }));
   }
 
   // ----- Tab: Konto -----

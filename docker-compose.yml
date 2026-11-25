@@ -10,6 +10,7 @@ services:
       - "${HOST_PORT:-8020}:8084"
     volumes:
       - ./data:/data        # Datenbank, Profilbilder, eigene Fragen (data/questions/*.json)
+      - ${BACKUP_PATH:-./backups/auto}:/backups   # nächtliche Sicherung – z. B. auf die Synology (siehe README)
     environment:
       GAME_TZ: Europe/Berlin
       PUBLIC_URL: ${PUBLIC_URL:-}
@@ -22,6 +23,14 @@ services:
       EXTRA_BEFORE_HOUR: ${EXTRA_BEFORE_HOUR:-15}
       EXTRA_QUESTIONS: ${EXTRA_QUESTIONS:-5}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:abendkasse@example.com}
+      MAX_STAKE: ${MAX_STAKE:-30}
+      STAKE_STEP: ${STAKE_STEP:-10}
+      TEMPO_SECONDS: ${TEMPO_SECONDS:-5}
+      TEMPO_BONUS: ${TEMPO_BONUS:-2}
+      DUEL_POINTS: ${DUEL_POINTS:-20}
+      REMINDER_HOUR: ${REMINDER_HOUR:-18}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
       POINTS_PER_CORRECT: ${POINTS_PER_CORRECT:-10}
       PERFECT_DAY_BONUS: ${PERFECT_DAY_BONUS:-20}
       WEEK_WIN_BONUS: ${WEEK_WIN_BONUS:-100}

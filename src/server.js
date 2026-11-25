@@ -4,6 +4,9 @@ const cfg = require('./config');
 const G = require('./game');
 const Q = require('./questions');
 const P = require('./push');
+const R = require('./reports');
+const Stats = require('./stats');
+const Backup = require('./backup');
 
 const app = express();
 app.set('trust proxy', true); // hinter Reverse Proxy (NPM, Traefik, Caddy …)
@@ -88,6 +91,7 @@ app.post('/api/push/test', auth, limit(10, 600_000), async (req, res) => {
 
 app.get('/api/me', auth, wrap((req) => ({
   id: req.player.id, name: req.player.name, avatar: req.player.avatar, games: G.gamesOfPlayer(req.player.id),
+  canManage: R.canManage(req.player), openReports: R.openCount(req.player),
 })));
 
 app.put('/api/me', auth, wrap((req) => {
@@ -119,8 +123,8 @@ app.get('/api/games/:code/today', auth, member, wrap((req) => {
 }));
 
 app.post('/api/games/:code/answer', auth, member, wrap((req) => {
-  const mine = G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice), req.body.date, req.body.kind === 'extra' ? 'extra' : 'day');
-  return { ok: true, answered: Object.keys(mine).length };
+  return G.answer(req.game, req.player, Number(req.body.idx), Number(req.body.choice), req.body.date,
+    req.body.kind === 'extra' ? 'extra' : 'day', req.body.order);
 }));
 
 app.post('/api/games/:code/joker', auth, member, wrap((req) => G.useJoker(req.game, req.player, Number(req.body.idx), req.body.date, req.body.kind === 'extra' ? 'extra' : 'day')));
@@ -148,7 +152,22 @@ app.get('/api/games/:code/days/:date', auth, member, wrap((req) => {
   return v;
 }));
 
-app.put('/api/games/:code/settings', auth, member, wrap((req) => G.updateSettings(req.game, { difficulty: req.body.difficulty })));
+app.put('/api/games/:code/settings', auth, member, wrap((req) => G.updateSettings(req.game, req.player, {
+  difficulty: req.body.difficulty, themeMode: req.body.themeMode, theme: req.body.theme,
+})));
+
+// Frage aufdecken (mit Einsatz) und Duell-Frage
+app.post('/api/games/:code/open', auth, member, wrap((req) => G.openQuestion(req.game, req.player, Number(req.body.idx),
+  Number(req.body.stake) || 0, req.body.date, req.body.kind === 'extra' ? 'extra' : 'day')));
+app.post('/api/games/:code/duel', auth, member, wrap((req) => G.answerDuel(req.game, req.player, req.body.value, req.body.date)));
+
+// Statistik & Abzeichen
+app.get('/api/games/:code/stats', auth, member, wrap((req) => Stats.view(req.game.id, req.player)));
+
+// Fragen melden und Meldungen bearbeiten
+app.post('/api/games/:code/report', auth, member, limit(30, 3600_000), wrap((req) => R.report(req.game, req.player, req.body)));
+app.get('/api/reports', auth, wrap((req) => ({ reasons: R.REASONS, items: R.list(req.player, req.query.status === 'done' ? 'done' : 'open') })));
+app.post('/api/reports/:qid', auth, wrap((req) => R.resolve(req.player, req.params.qid, req.body)));
 
 app.get('/api/games/:code/ledger', auth, member, wrap((req) => G.ledgerOf(req.game.id, req.player.id)));
 
@@ -159,12 +178,18 @@ function admin(req, res, next) {
   next();
 }
 app.post('/api/admin/payout-now', admin, wrap(() => { G.tick(true); return { ok: true }; }));
+app.post('/api/admin/backup', admin, async (req, res) => {
+  try { res.json(await Backup.run()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/backup', admin, wrap(() => Backup.status() || { info: 'Seit dem Start noch keine Sicherung.' }));
 app.post('/api/admin/reload-questions', admin, wrap(() => { Q.reload(); return Q.genres(); }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unbekannter Endpunkt.' }));
 
 // ---------- Frontend ----------
 
+// Bilder für eigene Bildfragen: data/questions/bilder/… -> /eigene/…
+app.use('/eigene', express.static(path.join(cfg.DATA_DIR, 'questions', 'bilder'), { maxAge: '1d', fallthrough: false }));
 app.use('/avatars', express.static(G.AVATAR_DIR, { maxAge: '30d', immutable: true, fallthrough: false }));
 
 app.use(express.static(path.join(__dirname, '..', 'public'), {

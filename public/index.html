@@ -12,6 +12,15 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Abendkasse">
+  <script>
+    // Design sofort setzen (kein Aufblitzen)
+    (function () { try {
+      var t = localStorage.getItem('ak_theme') || 'auto';
+      var dark = t === 'dark' || (t === 'auto' && !matchMedia('(prefers-color-scheme: light)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.documentElement.dataset.font = localStorage.getItem('ak_font') || 'normal';
+    } catch (e) {} })();
+  </script>
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>

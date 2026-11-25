@@ -134,6 +134,55 @@ CREATE TABLE IF NOT EXISTS notify_log (
   PRIMARY KEY (game_id, key)
 );
 
+-- Aufgedeckte Fragen: Startzeit (Tempo-Bonus) und Einsatz
+CREATE TABLE IF NOT EXISTS opens (
+  day_id INTEGER REFERENCES days(id) ON DELETE CASCADE,
+  player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  opened_at INTEGER NOT NULL,       -- ms seit 1970
+  stake INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day_id, player_id, idx)
+);
+
+-- Duell-Frage des Tages (Schätzfrage)
+CREATE TABLE IF NOT EXISTS duel_answers (
+  day_id INTEGER REFERENCES days(id) ON DELETE CASCADE,
+  player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+  value REAL NOT NULL,
+  answered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (day_id, player_id)
+);
+
+-- Gemeldete Fragen
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY,
+  qid TEXT NOT NULL,
+  player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+  game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+  reason TEXT NOT NULL,
+  comment TEXT,
+  question TEXT NOT NULL,           -- JSON-Snapshot
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Korrekturen am Fragenkatalog (Stufe ändern, Frage deaktivieren)
+CREATE TABLE IF NOT EXISTS question_overrides (
+  qid TEXT PRIMARY KEY,
+  level INTEGER,
+  disabled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Erreichte Abzeichen
+CREATE TABLE IF NOT EXISTS achievements (
+  game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+  player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (game_id, player_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS used_questions (
   game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
   qid TEXT NOT NULL,
@@ -146,6 +195,18 @@ const cols = db.prepare('PRAGMA table_info(players)').all().map((c) => c.name);
 if (!cols.includes('avatar')) db.exec('ALTER TABLE players ADD COLUMN avatar TEXT');
 const gcols = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gcols.includes('difficulty')) db.exec("ALTER TABLE games ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'mittel'");
+// Themenwoche
+if (!gcols.includes('theme_mode')) db.exec('ALTER TABLE games ADD COLUMN theme_mode INTEGER NOT NULL DEFAULT 0');
+if (!gcols.includes('week_theme')) db.exec('ALTER TABLE games ADD COLUMN week_theme TEXT');
+if (!gcols.includes('theme_chooser')) db.exec('ALTER TABLE games ADD COLUMN theme_chooser INTEGER');
+
+const addCol = (table, col, def) => {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+};
+addCol('answers', 'value', 'TEXT');                       // Reihenfolge-Antwort (JSON)
+addCol('answers', 'stake', 'INTEGER NOT NULL DEFAULT 0'); // Einsatz
+addCol('answers', 'ms', 'INTEGER');                       // Antwortzeit
+addCol('results', 'detail', 'TEXT');                      // Aufschlüsselung der Punkte (JSON)
 const dcols = db.prepare('PRAGMA table_info(days)').all().map((c) => c.name);
 // Tag wiederholen / streichen
 if (!dcols.includes('due_date')) db.exec('ALTER TABLE days ADD COLUMN due_date TEXT');        // Auszahlungstag (Nachholrunde: später als date)
@@ -180,6 +241,7 @@ if (!db.prepare('PRAGMA table_info(days)').all().some((c) => c.name === 'kind'))
   db.exec('PRAGMA foreign_keys = ON');
   console.log('[DB] Tabelle days für Extrarunden umgebaut');
 }
+addCol('days', 'duel', 'TEXT');                           // Duell-Frage des Tages (JSON)
 
 function tx(fn) {
   db.exec('BEGIN');
