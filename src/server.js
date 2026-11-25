@@ -202,11 +202,23 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Unbekannter Endpunk
 app.use('/eigene', express.static(path.join(cfg.DATA_DIR, 'questions', 'bilder'), { maxAge: '1d', fallthrough: false }));
 app.use('/avatars', express.static(G.AVATAR_DIR, { maxAge: '30d', immutable: true, fallthrough: false }));
 
+// index.html mit Versionsnummer an app.js/app.css ausliefern -> nach einem Update lädt jeder Browser
+// (auch die installierte App) sofort die neuen Dateien statt einer zwischengespeicherten alten Version.
+const fs = require('fs');
+const VERSION = (process.env.APP_VERSION || 'dev').slice(0, 12) + (process.env.APP_VERSION ? '' : '-' + Date.now());
+const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8')
+  .replace(/(href|src)="\/app\.(css|js)"/g, `$1="/app.$2?v=${VERSION}"`);
+const sendIndex = (req, res) => res.set({ 'Cache-Control': 'no-cache', 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
+app.get(['/', '/index.html'], sendIndex);
+
 app.use(express.static(path.join(__dirname, '..', 'public'), {
-  maxAge: '1h', index: 'index.html',
-  setHeaders: (res, file) => { if (/(sw\.js|index\.html|manifest\.webmanifest)$/.test(file)) res.set('Cache-Control', 'no-cache'); },
+  index: false,
+  setHeaders: (res, file, stat) => {
+    if (/\.(js|css|html|webmanifest)$/.test(file)) res.set('Cache-Control', 'no-cache'); // immer kurz beim Server nachfragen (ETag -> 304)
+    else res.set('Cache-Control', 'public, max-age=604800'); // Bilder, Flaggen, Icons: 7 Tage
+  },
 }));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+app.get('*', sendIndex);
 
 // ---------- Start ----------
 
