@@ -956,7 +956,7 @@
               <div class="chips-s">${chips(r.detail)}</div>
             </div>`).join('')}
         </div>
-        ${isToday && g.extra && g.extra.status === 'paid' ? `<a class="btn ghost small" style="margin-top:12px" href="#/g/${g.code}/extra/${d.date}">🎲 Extrarunde ansehen</a>` : ''}
+        ${isToday && g.extra && g.extra.status === 'paid' ? `<div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)"><a class="btn ghost small" href="#/g/${g.code}/extra/${d.date}">🎲 Extrarunde ansehen</a></div>` : ''}
         ${isToday ? '<p class="muted small" style="margin-top:12px">Morgen gibt es neue Fragen.</p>' : ''}
       </div>
       ${duelHtml}
