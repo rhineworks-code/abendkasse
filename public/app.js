@@ -65,11 +65,17 @@
   }
 
   async function api(path, opts = {}) {
-    const res = await fetch('/api' + path, {
-      method: opts.method || 'GET',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch('/api' + path, {
+        method: opts.method || 'GET',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+      });
+    } catch (e) {
+      throw new Error(e.name === 'TimeoutError' ? 'Der Server antwortet nicht.' : 'Keine Verbindung zum Server.');
+    }
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && token) { logout(false); throw new Error('Bitte neu anmelden.'); }
     if (!res.ok) throw new Error(data.error || 'Fehler ' + res.status);
@@ -234,12 +240,31 @@
   // ---------- Router ----------
   window.addEventListener('hashchange', route);
 
+  // Fehler nicht verschlucken: anzeigen und ins Server-Log schreiben (docker logs abendkasse)
+  let errSent = 0;
+  function reportError(e) {
+    const msg = String((e && (e.stack || e.message)) || e).slice(0, 1500);
+    console.error(e);
+    if (errSent++ < 5) fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ msg, url: location.hash, ua: navigator.userAgent }) }).catch(() => {});
+  }
+  window.addEventListener('error', (ev) => reportError(ev.error || ev.message));
+  window.addEventListener('unhandledrejection', (ev) => reportError(ev.reason));
+
   async function route() {
+    try { await dispatch(); }
+    catch (e) {
+      reportError(e);
+      $app.innerHTML = `<div class="card"><b>Hoppla, da ist etwas schiefgelaufen.</b><p class="muted">${esc(e.message)}</p>
+        <div class="row"><button class="btn" onclick="location.reload()">Neu laden</button><a class="btn ghost" href="#/">Zur Übersicht</a></div></div>`;
+    }
+  }
+
+  async function dispatch() {
     clearInterval(refreshTimer);
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    try {
-      if (parts[0] === 'restore') return viewRestore();
-      if (!token) return viewWelcome(parts[0] === 'join' ? parts[1] : null);
+    {
+      if (parts[0] === 'restore') return await viewRestore();
+      if (!token) return await viewWelcome(parts[0] === 'join' ? parts[1] : null);
       if (!me) { me = await api('/me'); setWho(); syncPush(); setTimeout(maybeInstallPopup, 1500); }
       if (parts[0] === 'join' && parts[1]) {
         const r = await api('/games/join', { method: 'POST', body: { code: parts[1] } });
@@ -247,12 +272,10 @@
         location.hash = `#/g/${r.code}`;
         return;
       }
-      if (parts[0] === 'g' && parts[1]) return viewGame(parts[1].toUpperCase(), parts[2] || 'heute', parts[3]);
-      if (parts[0] === 'profil') return viewProfile();
-      if (parts[0] === 'training') return parts[1] ? viewTrainRound(+parts[1]) : viewTraining();
-      return viewLobby();
-    } catch (e) {
-      $app.innerHTML = `<div class="card"><b>Hoppla.</b><p class="muted">${esc(e.message)}</p><a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
+      if (parts[0] === 'g' && parts[1]) return await viewGame(parts[1].toUpperCase(), parts[2] || 'heute', parts[3]);
+      if (parts[0] === 'profil') return await viewProfile();
+      if (parts[0] === 'training') return await (parts[1] ? viewTrainRound(+parts[1]) : viewTraining());
+      return await viewLobby();
     }
   }
 
@@ -527,13 +550,18 @@
     if (sessionStorage.getItem('ak_new') === g.code) { sessionStorage.removeItem('ak_new'); openInvite(g); }
 
     const $tab = document.getElementById('tab');
-    if (tab === 'woche') return tabWeek($tab, g);
-    if (tab === 'konto') return tabLedger($tab, g);
-    if (tab === 'tag' && arg) return tabDay($tab, g, arg);
-    if (tab === 'extra' && arg) return tabExtra($tab, g, arg);
-    if (tab === 'statistik') return tabStats($tab, g);
-    if (tab === 'optionen') return tabOptions($tab, g);
-    return tabToday($tab, g);
+    try {
+      if (tab === 'woche') return await tabWeek($tab, g);
+      if (tab === 'konto') return await tabLedger($tab, g);
+      if (tab === 'tag' && arg) return await tabDay($tab, g, arg);
+      if (tab === 'extra' && arg) return await tabExtra($tab, g, arg);
+      if (tab === 'statistik') return await tabStats($tab, g);
+      if (tab === 'optionen') return await tabOptions($tab, g);
+      return await tabToday($tab, g);
+    } catch (e) {
+      reportError(e);
+      $tab.innerHTML = `<div class="card"><b>Dieser Bereich konnte nicht geladen werden.</b><p class="muted small">${esc(e.message)}</p><button class="btn small" onclick="location.reload()">Neu laden</button></div>`;
+    }
   }
 
   // ----- Tag wiederholen / streichen -----

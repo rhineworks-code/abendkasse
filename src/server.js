@@ -78,6 +78,12 @@ app.get('/api/version', (req, res) => res.json(U.current));
 // Admin-Bereich unter /admin (eigene Anmeldung, siehe src/admin.js)
 require('./admin').mount(app, { wrap });
 
+// Fehler aus der App ins Log schreiben
+app.post('/api/client-error', limit(30, 600_000), (req, res) => {
+  console.error('[App-Fehler]', String(req.body.url || '').slice(0, 100), '|', String(req.body.msg || '').slice(0, 1500).replace(/\n\s*/g, ' ⏎ '), '|', String(req.body.ua || '').slice(0, 160));
+  res.json({ ok: true });
+});
+
 app.get('/api/genres', (req, res) => res.json(Q.genres()));
 
 app.post('/api/players', limit(10, 3600_000), wrap((req) => {
