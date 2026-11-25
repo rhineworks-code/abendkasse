@@ -183,6 +183,20 @@ CREATE TABLE IF NOT EXISTS achievements (
   PRIMARY KEY (game_id, player_id, key)
 );
 
+-- Admin-Bereich (/admin): eigene Konten, unabhängig von Spielern
+CREATE TABLE IF NOT EXISTS admin_users (
+  id INTEGER PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+  hash TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES admin_users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS used_questions (
   game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
   qid TEXT NOT NULL,
@@ -207,12 +221,7 @@ addCol('answers', 'value', 'TEXT');                       // Reihenfolge-Antwort
 addCol('answers', 'stake', 'INTEGER NOT NULL DEFAULT 0'); // Einsatz
 addCol('answers', 'ms', 'INTEGER');                       // Antwortzeit
 addCol('results', 'detail', 'TEXT');                      // Aufschlüsselung der Punkte (JSON)
-addCol('players', 'is_admin', 'INTEGER NOT NULL DEFAULT 0'); // Admin: Updates, Fragenkatalog
-// Gibt es noch keinen Admin, wird der zuerst registrierte Spieler Admin
-if (!db.prepare('SELECT 1 FROM players WHERE is_admin = 1').get()) {
-  const first = db.prepare('SELECT id, name FROM players ORDER BY id LIMIT 1').get();
-  if (first) { db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(first.id); console.log(`[Admin] ${first.name} ist jetzt Admin`); }
-}
+addCol('players', 'is_admin', 'INTEGER NOT NULL DEFAULT 0'); // bekommt Admin-Pushes (z. B. „Update verfügbar“) – im Admin-Bereich wählbar
 const dcols = db.prepare('PRAGMA table_info(days)').all().map((c) => c.name);
 // Tag wiederholen / streichen
 if (!dcols.includes('due_date')) db.exec('ALTER TABLE days ADD COLUMN due_date TEXT');        // Auszahlungstag (Nachholrunde: später als date)

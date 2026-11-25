@@ -1,30 +1,44 @@
-// Kommandozeile für den Notfall, z. B.:
-//   docker exec -u node abendkasse node src/cli.js admins            Spieler und Admins anzeigen
-//   docker exec -u node abendkasse node src/cli.js admin "Alex"      Alex zum Admin machen
-//   docker exec -u node abendkasse node src/cli.js kein-admin "Sarah"
-process.env.NODE_NO_WARNINGS = '1';
+// Kommandozeile für den Notfall:
+//   docker exec -it -u node abendkasse node src/cli.js passwort <Benutzer>   Admin-Konto anlegen / Passwort neu setzen
+//   docker exec -u node abendkasse node src/cli.js admin-konten              Admin-Konten anzeigen
+//   docker exec -u node abendkasse node src/cli.js spieler                   Spieler anzeigen
+process.removeAllListeners('warning'); // „SQLite is an experimental feature“ ausblenden
+process.on('warning', (w) => { if (w.name !== 'ExperimentalWarning') console.warn(w.message); });
 const { db } = require('./db');
+const A = require('./admin');
 const [cmd, ...rest] = process.argv.slice(2);
-const name = rest.join(' ').trim();
+const arg = rest.join(' ').trim();
 
-const list = () => db.prepare('SELECT id, name, is_admin FROM players ORDER BY id').all()
-  .forEach((p) => console.log(`${String(p.id).padStart(3)}  ${p.is_admin ? '🛡️  Admin ' : '         '}  ${p.name}`));
-
-function find() {
-  const all = db.prepare('SELECT id, name, is_admin FROM players WHERE name = ? COLLATE NOCASE').all(name);
-  if (!all.length) { console.error(`Kein Spieler „${name}“ gefunden.`); list(); process.exit(1); }
-  if (all.length > 1) { console.error(`Mehrere Spieler heißen „${name}“ – bitte die ID angeben:`); list(); process.exit(1); }
-  return all[0];
+function ask(q, hidden) {
+  return new Promise((resolve) => {
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    if (hidden) rl._writeToOutput = (s) => { if (s.startsWith(q)) rl.output.write(q); };
+    rl.question(q, (a) => { rl.close(); if (hidden) process.stdout.write('\n'); resolve(a); });
+  });
 }
 
-if (cmd === 'admins' || !cmd) list();
-else if (cmd === 'admin') {
-  const p = /^\d+$/.test(name) ? db.prepare('SELECT * FROM players WHERE id = ?').get(+name) : find();
-  if (!p) { console.error('Spieler nicht gefunden.'); process.exit(1); }
-  db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(p.id); console.log(`${p.name} ist jetzt Admin.`);
-} else if (cmd === 'kein-admin') {
-  const p = /^\d+$/.test(name) ? db.prepare('SELECT * FROM players WHERE id = ?').get(+name) : find();
-  if (!p) { console.error('Spieler nicht gefunden.'); process.exit(1); }
-  if (db.prepare('SELECT COUNT(*) AS c FROM players WHERE is_admin = 1').get().c <= 1 && p.is_admin) { console.error('Es muss mindestens einen Admin geben.'); process.exit(1); }
-  db.prepare('UPDATE players SET is_admin = 0 WHERE id = ?').run(p.id); console.log(`${p.name} ist kein Admin mehr.`);
-} else { console.log('Befehle: admins | admin <Name oder ID> | kein-admin <Name oder ID>'); }
+(async () => {
+  if (cmd === 'passwort') {
+    if (!arg) { console.error('Bitte Benutzernamen angeben: node src/cli.js passwort <Benutzer>'); process.exit(1); }
+    let pw = process.env.ADMIN_PASSWORD;
+    if (!pw) {
+      if (!process.stdin.isTTY) { console.error('Interaktiv starten (docker exec -it …) oder ADMIN_PASSWORD setzen.'); process.exit(1); }
+      pw = await ask('Neues Passwort: ', true);
+      if (pw !== await ask('Wiederholen:    ', true)) { console.error('Passwörter stimmen nicht überein.'); process.exit(1); }
+    }
+    try { A.setPassword(arg, pw); } catch (e) { console.error(e.message); process.exit(1); }
+    console.log(`Admin-Konto „${arg}“ gespeichert. Anmelden unter /admin`);
+  } else if (cmd === 'admin-konten') {
+    const rows = db.prepare('SELECT id, username, created_at FROM admin_users ORDER BY id').all();
+    if (!rows.length) console.log('Noch kein Admin-Konto. Einrichten unter /admin (Code im Log) oder mit: passwort <Benutzer>');
+    rows.forEach((u) => console.log(`${String(u.id).padStart(3)}  ${u.username}  (seit ${u.created_at})`));
+  } else if (cmd === 'admin-loeschen') {
+    const r = db.prepare('DELETE FROM admin_users WHERE username = ?').run(arg);
+    console.log(r.changes ? `Admin-Konto „${arg}“ gelöscht.` : 'Nicht gefunden.');
+  } else if (cmd === 'spieler') {
+    db.prepare('SELECT id, name, is_admin FROM players ORDER BY id').all()
+      .forEach((p) => console.log(`${String(p.id).padStart(3)}  ${p.is_admin ? '🔔' : '  '}  ${p.name}`));
+  } else {
+    console.log('Befehle: passwort <Benutzer> | admin-konten | admin-loeschen <Benutzer> | spieler');
+  }
+})();

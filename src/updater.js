@@ -37,7 +37,7 @@ async function check() {
         latest.changes = (cmp.commits || []).map((c) => c.commit.message.split('\n')[0]).reverse().slice(0, 15);
       } catch (e) { latest.changes = [latest.message]; }
       if (P.once(0, `update:${latest.sha}`)) {
-        P.send(managers(), { title: '⬆️ Update für Abendkasse verfügbar', body: latest.message || 'Eine neue Version ist bereit.', url: '/#/profil', tag: 'update' });
+        P.send(managers(), { title: '⬆️ Update für Abendkasse verfügbar', body: latest.message || 'Eine neue Version ist bereit.', url: '/admin', tag: 'update' });
       }
     }
     lastError = null;

@@ -231,59 +231,6 @@
     }
   }
 
-  // ---------- Update aus der App ----------
-  let upd = null, updAt = 0;
-  async function loadUpdate(force = false) {
-    if (!me || !me.canManage) return null;
-    if (!force && upd && Date.now() - updAt < 5 * 60_000) return upd;
-    try { upd = await api('/update'); updAt = Date.now(); } catch (e) { upd = null; }
-    return upd;
-  }
-  const shortSha = (s) => (s && s !== 'dev' ? s.slice(0, 7) : 'lokal');
-  function updateBanner() {
-    if (!upd || !upd.available) return '';
-    return `<div class="notice upd"><div>⬆️ <b>Update verfügbar</b>
-      <div class="small muted">${esc(upd.latest.message || 'Neue Version')}${upd.latest.behind > 1 ? ` (+${upd.latest.behind - 1} weitere Änderungen)` : ''}</div></div>
-      <div class="row"><button class="btn small" data-upd-apply>Jetzt einspielen</button><a class="btn ghost small" href="#/profil">Details</a></div></div>`;
-  }
-  function bindUpdate() {
-    document.querySelectorAll('[data-upd-apply]').forEach((b) => (b.onclick = applyUpdate));
-  }
-  async function applyUpdate() {
-    if (!upd || !upd.configured) { toast('Der Updater ist noch nicht eingerichtet – einmalig ./update.sh auf dem Server ausführen.', true); return; }
-    if (!confirm('Update jetzt einspielen?\n\nVorher wird automatisch eine Sicherung erstellt. Die App ist etwa eine Minute nicht erreichbar und lädt danach neu.')) return;
-    const from = upd.current.sha;
-    const ov = document.createElement('div');
-    ov.className = 'modal';
-    ov.innerHTML = `<div class="sheet center"><div class="big">⬆️</div><h2>Update wird eingespielt …</h2>
-      <p class="muted" id="updmsg">Sicherung wird erstellt …</p><div class="spinner"></div></div>`;
-    document.body.appendChild(ov);
-    const msg = (t) => { const el = document.getElementById('updmsg'); if (el) el.textContent = t; };
-    try {
-      const r = await api('/update/apply', { method: 'POST' });
-      msg(r.finished ? 'Updater fertig – prüfe die Version …' : 'Neue Version wird geladen und gestartet …');
-    } catch (e) {
-      // Verbindung bricht ab, wenn die App schon neu startet – das ist normal
-      if (!/Failed to fetch|NetworkError|Load failed|Fehler 50[234]/.test(e.message)) { ov.remove(); toast(e.message, true); return; }
-      msg('App startet neu …');
-    }
-    const t0 = Date.now();
-    const poll = async () => {
-      try {
-        const v = await fetch('/api/version', { cache: 'no-store' }).then((r) => r.json());
-        if (v.sha && v.sha !== from) { msg('Fertig! Lade neu …'); setTimeout(() => location.reload(), 800); return; }
-      } catch (e) { msg('App startet neu …'); }
-      if (Date.now() - t0 > 180_000) {
-        ov.remove();
-        toast('Keine neue Version erkannt. Läuft der Updater-Container? (docker logs abendkasse-updater)', true);
-        upd = null; route();
-        return;
-      }
-      setTimeout(poll, 3000);
-    };
-    setTimeout(poll, 4000);
-  }
-
   // ---------- Router ----------
   window.addEventListener('hashchange', route);
 
@@ -294,7 +241,6 @@
       if (parts[0] === 'restore') return viewRestore();
       if (!token) return viewWelcome(parts[0] === 'join' ? parts[1] : null);
       if (!me) { me = await api('/me'); setWho(); syncPush(); setTimeout(maybeInstallPopup, 1500); }
-      await loadUpdate();
       if (parts[0] === 'join' && parts[1]) {
         const r = await api('/games/join', { method: 'POST', body: { code: parts[1] } });
         me = null;
@@ -303,7 +249,6 @@
       }
       if (parts[0] === 'g' && parts[1]) return viewGame(parts[1].toUpperCase(), parts[2] || 'heute', parts[3]);
       if (parts[0] === 'profil') return viewProfile();
-      if (parts[0] === 'meldungen') return viewReports();
       return viewLobby();
     } catch (e) {
       $app.innerHTML = `<div class="card"><b>Hoppla.</b><p class="muted">${esc(e.message)}</p><a class="btn ghost" href="#/">Zur Übersicht</a></div>`;
@@ -383,8 +328,6 @@
         <label class="lbl">Schriftgröße</label>
         <div class="seg" id="ftseg">${[['normal', 'Normal'], ['large', 'Groß'], ['xlarge', 'Sehr groß']].map(([k, v]) => `<button type="button" data-f="${k}" class="${(localStorage.getItem('ak_font') || 'normal') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
       </div>
-      ${me.isAdmin || me.adminClaimable ? `<div class="card"><h2 style="margin-top:0">🛡️ Admin${me.isAdmin ? '' : '-Zugang'}</h2><div id="adminbox"></div></div>` : ''}
-      ${me.canManage ? '<div class="card" id="updcard"><h2 style="margin-top:0">⬆️ Version & Updates</h2><div id="updbox" class="small muted">Prüfe …</div></div>' : ''}
       <div class="card" id="pushcard">
         <h2 style="margin-top:0">🔔 Benachrichtigungen</h2>
         <div id="pushbox" class="muted small">Prüfe …</div>
@@ -396,9 +339,7 @@
         <div class="row" style="margin-top:14px"><a class="btn ghost" href="#/">Zurück</a><button class="btn ghost" id="lo">Abmelden</button></div>
       </div>`;
     renderPushBox();
-    renderUpdateBox();
     renderInstallBox();
-    renderAdminBox();
     document.querySelectorAll('#thseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_theme', b.dataset.t); applyLook(); viewProfile(); }));
     document.querySelectorAll('#ftseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_font', b.dataset.f); applyLook(); viewProfile(); }));
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
@@ -418,59 +359,6 @@
         await api('/me/avatar', { method: 'POST', body: { image } });
         toast('Profilbild gespeichert'); viewProfile();
       } catch (e) { toast(e.message || 'Bild konnte nicht gelesen werden.', true); }
-    };
-  }
-
-  async function renderAdminBox() {
-    const box = document.getElementById('adminbox');
-    if (!box) return;
-    if (!me.isAdmin) {
-      box.innerHTML = `<p class="small muted" style="margin:0 0 10px">Admins sehen Updates und verwalten gemeldete Fragen. Mit dem <code>ADMIN_TOKEN</code> aus der <code>.env</code> kannst du dich selbst freischalten.</p>
-        <form id="claimf" class="row"><input class="grow" type="password" name="t" placeholder="ADMIN_TOKEN" autocomplete="off" required><button class="btn ghost small">Freischalten</button></form>`;
-      document.getElementById('claimf').onsubmit = async (ev) => {
-        ev.preventDefault();
-        try { await api('/admin-claim', { method: 'POST', body: { token: ev.target.t.value } }); toast('Du bist jetzt Admin 🛡️'); me = null; upd = null; route(); }
-        catch (e) { toast(e.message, true); }
-      };
-      return;
-    }
-    const list = await api('/admins');
-    box.innerHTML = `<p class="small muted" style="margin:0 0 10px">Admins sehen Update-Hinweise, können Updates einspielen und gemeldete Fragen bearbeiten.</p>
-      ${list.map((p) => `<div class="prog" style="padding:6px 0">${avatar(p, 26)}<span class="grow">${esc(p.name)}${p.id === me.id ? ' <span class="small muted">(du)</span>' : ''}</span>
-        <label class="switch"><input type="checkbox" data-adm="${p.id}" ${p.admin ? 'checked' : ''}><span></span></label></div>`).join('')}`;
-    box.querySelectorAll('[data-adm]').forEach((c) => (c.onchange = async () => {
-      const id = +c.dataset.adm;
-      if (!c.checked && id === me.id && !confirm('Dir selbst die Admin-Rechte entziehen?')) { c.checked = true; return; }
-      try {
-        await api(`/admins/${id}`, { method: 'POST', body: { admin: c.checked } });
-        toast(c.checked ? 'Admin hinzugefügt' : 'Admin entfernt');
-        if (id === me.id) { me = null; upd = null; route(); }
-      } catch (e) { toast(e.message, true); c.checked = !c.checked; }
-    }));
-  }
-
-  async function renderUpdateBox(force = false) {
-    const box = document.getElementById('updbox');
-    if (!box) return;
-    const u = await loadUpdate(force);
-    if (!u) { box.textContent = 'Update-Status nicht verfügbar.'; return; }
-    const d = (x) => (x ? new Date(x).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '');
-    box.innerHTML = `
-      <div class="srow" style="grid-template-columns:1fr 2fr"><span class="slabel">Installiert</span><span><code>${shortSha(u.current.sha)}</code> ${d(u.current.date)}</span></div>
-      <div class="srow" style="grid-template-columns:1fr 2fr"><span class="slabel">Neueste</span><span>${u.latest ? `<code>${shortSha(u.latest.sha)}</code> ${d(u.latest.date)}` : '<span class="muted">noch nicht geprüft</span>'}</span></div>
-      ${u.error ? `<p class="small" style="color:var(--bad)">Prüfung fehlgeschlagen: ${esc(u.error)}</p>` : ''}
-      ${u.current.sha === 'dev' ? '<p class="small">Diese Version wurde lokal gebaut – ein Vergleich ist nicht möglich.</p>' : ''}
-      ${u.available ? `<p style="color:var(--text);margin:12px 0 6px"><b>Was ist neu:</b></p><ul class="changes">${(u.latest.changes.length ? u.latest.changes : [u.latest.message]).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
-        : u.latest && u.current.sha !== 'dev' ? '<p style="color:var(--ok);margin:12px 0">✅ Du hast die neueste Version.</p>' : ''}
-      ${!u.configured ? '<p class="small">Der Updater ist noch nicht eingerichtet: einmalig <code>./update.sh</code> auf dem Server ausführen (legt das Token an und startet den Updater-Container).</p>' : ''}
-      <div class="row" style="margin-top:10px">
-        ${u.available ? `<button class="btn small" data-upd-apply ${u.configured ? '' : 'disabled'}>Jetzt einspielen</button>` : ''}
-        <button class="btn ghost small" id="updcheck">Nach Updates suchen</button>
-      </div>`;
-    bindUpdate();
-    document.getElementById('updcheck').onclick = async () => {
-      try { upd = await api('/update/check', { method: 'POST' }); updAt = Date.now(); toast(upd.available ? 'Update verfügbar!' : 'Keine neue Version.'); renderUpdateBox(); }
-      catch (e) { toast(e.message, true); }
     };
   }
 
@@ -521,8 +409,6 @@
 
     $app.innerHTML = `
       <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
-      ${updateBanner()}
-      ${me.canManage ? `<a class="notice muted-n" href="#/meldungen" style="color:var(--text)"><span>⚑ Gemeldete Fragen</span><span class="pill">${me.openReports} offen</span></a>` : ''}
       <h2>Deine Spiele</h2>
       <div class="gamelist">
         ${me.games.length ? me.games.map((g) => `
@@ -568,7 +454,6 @@
       document.querySelectorAll('#mode button').forEach((x) => x.classList.toggle('on', x === b));
     }));
     bindDiffSeg('diff', (d) => (difficulty = d));
-    bindUpdate();
     document.getElementById('join').onsubmit = async (ev) => {
       ev.preventDefault();
       try { const r = await api('/games/join', { method: 'POST', body: { code: ev.target.code.value } }); location.hash = `#/g/${r.code}`; }
@@ -623,7 +508,6 @@
         ${g.players.length < g.maxPlayers ? `<div class="player"><div class="nm muted">Wartet auf Mitspieler …</div><div class="small muted" style="margin:4px 0 8px">Code <b>${g.code}</b></div><button class="btn small" data-invite>Jetzt einladen</button></div>` : ''}
       </div>
 
-      ${updateBanner()}
       ${notices(g)}
 
       <nav class="tabs">
@@ -636,7 +520,6 @@
 
     document.querySelectorAll('[data-invite]').forEach((b) => (b.onclick = () => openInvite(g)));
     bindNotices(g);
-    bindUpdate();
     // Direkt nach dem Erstellen: Einladen anbieten
     if (sessionStorage.getItem('ak_new') === g.code) { sessionStorage.removeItem('ak_new'); openInvite(g); }
 
@@ -1269,39 +1152,6 @@
   }
 
   // ----- Meldungen (Spielleiter) -----
-  async function viewReports(status = 'open') {
-    const r = await api(`/reports?status=${status}`);
-    $app.innerHTML = `
-      <div class="spread"><h1>⚑ Gemeldete Fragen</h1><a href="#/" class="small">Zurück</a></div>
-      <div class="seg" style="margin:10px 0 16px"><button data-s="open" class="${status === 'open' ? 'on' : ''}">Offen</button><button data-s="done" class="${status === 'done' ? 'on' : ''}">Erledigt</button></div>
-      ${r.items.length ? '' : `<p class="muted">${status === 'open' ? 'Keine offenen Meldungen. 🎉' : 'Noch nichts erledigt.'}</p>`}
-      ${r.items.map((it, n) => {
-        const q = it.question;
-        const answer = q.type === 'estimate' ? `${q.answer} ${q.unit || ''}` : q.type === 'order' ? (q.answer || []).map((k) => q.items[k]).join(' → ') : (q.options || [])[q.answer];
-        return `<div class="card">
-          <div class="qhead"><span>${esc(q.genre || '')} ${q.type === 'estimate' ? '<span class="pill">Duell-Schätzfrage</span>' : levelBadge(it.level)} ${it.disabled ? '<span class="pill">deaktiviert</span>' : ''}</span><span class="small muted">${esc(it.qid)}</span></div>
-          <div class="qtext">${esc(q.q)}</div>
-          <div class="small">Richtige Antwort laut Katalog: <b>${esc(answer)}</b></div>
-          <div class="small muted" style="margin-top:4px">Bisher ${it.stats.correct}/${it.stats.answered} richtig beantwortet${it.stats.answered ? ` (${Math.round((it.stats.correct / it.stats.answered) * 100)} %)` : ''}</div>
-          <div style="margin:10px 0">${it.reports.map((x) => `<div class="small">• <b>${esc(x.reasonText)}</b> – ${esc(x.by || '?')}${x.comment ? `: „${esc(x.comment)}“` : ''}</div>`).join('')}</div>
-          ${status === 'open' && it.inCatalog ? `<div class="row">
-            ${q.type === 'estimate' ? '' : `<span class="small muted">Stufe:</span>
-            ${[1, 2, 3].map((l) => `<button class="btn ghost small ${it.level === l ? 'onlv' : ''}" data-n="${n}" data-lv="${l}">${levelBadge(l)}</button>`).join('')}`}
-            <button class="btn ghost small" data-n="${n}" data-dis="1">Aussortieren</button>
-            <button class="btn small" data-n="${n}" data-ok="1">Erledigt</button>
-          </div>` : status === 'open' ? `<button class="btn small" data-n="${n}" data-ok="1">Erledigt</button>` : ''}
-        </div>`;
-      }).join('')}
-      <p class="small muted">Tipp: Falsche Antworten korrigierst du dauerhaft in der JSON-Datei im Ordner <code>questions/</code> bzw. <code>data/questions/</code>. „Aussortieren“ nimmt die Frage sofort aus dem Spiel.</p>`;
-    $app.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => viewReports(b.dataset.s)));
-    $app.querySelectorAll('[data-n]').forEach((b) => (b.onclick = async () => {
-      const it = r.items[+b.dataset.n];
-      const body = b.dataset.lv ? { level: +b.dataset.lv } : b.dataset.dis ? { disabled: true } : { dismiss: true };
-      try { await api(`/reports/${encodeURIComponent(it.qid)}`, { method: 'POST', body }); toast(b.dataset.lv ? 'Stufe geändert' : b.dataset.dis ? 'Frage aussortiert' : 'Erledigt'); viewReports(status); }
-      catch (e) { toast(e.message, true); }
-    }));
-  }
-
   // ----- Tab: Konto -----
   async function tabLedger($tab, g) {
     const rows = await api(`/games/${g.code}/ledger`);

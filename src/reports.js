@@ -26,8 +26,7 @@ function report(game, player, { date, kind, idx, reason, comment }) {
   return { ok: true };
 }
 
-// Katalog-Korrekturen gelten für alle Spiele -> nur Admins
-const canManage = (player) => !!db.prepare('SELECT is_admin FROM players WHERE id = ?').get(player.id)?.is_admin;
+// Verwaltung nur über den Admin-Bereich (/admin) – dort wird die Anmeldung geprüft
 
 // Trefferquote einer Frage über alle Runden aller Spiele
 function questionStats(qids) {
@@ -49,8 +48,7 @@ function questionStats(qids) {
   return out;
 }
 
-function list(player, status = 'open') {
-  if (!canManage(player)) throw httpError(403, 'Nur Admins können Meldungen bearbeiten.');
+function list(status = 'open') {
   const rows = db.prepare(`SELECT r.*, p.name AS player_name FROM reports r LEFT JOIN players p ON p.id = r.player_id
     WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 300`).all(status);
   const byQ = {};
@@ -70,8 +68,7 @@ function list(player, status = 'open') {
 }
 
 // Stufe ändern / Frage deaktivieren / Meldungen erledigen
-function resolve(player, qid, { level, disabled, dismiss }) {
-  if (!canManage(player)) throw httpError(403, 'Nur Admins können Meldungen bearbeiten.');
+function resolve(qid, { level, disabled, dismiss }) {
   if (level !== undefined || disabled !== undefined) {
     const cur = db.prepare('SELECT * FROM question_overrides WHERE qid = ?').get(qid) || { level: null, disabled: 0 };
     const lv = level !== undefined ? (level ? Math.min(3, Math.max(1, Number(level))) : null) : cur.level;
@@ -83,6 +80,6 @@ function resolve(player, qid, { level, disabled, dismiss }) {
   return { ok: true, dismissed: !!dismiss };
 }
 
-const openCount = (player) => (canManage(player) ? db.prepare("SELECT COUNT(DISTINCT qid) AS c FROM reports WHERE status = 'open'").get().c : 0);
+const openCount = () => db.prepare("SELECT COUNT(DISTINCT qid) AS c FROM reports WHERE status = 'open'").get().c;
 
-module.exports = { REASONS, report, list, resolve, canManage, openCount };
+module.exports = { REASONS, report, list, resolve, openCount };

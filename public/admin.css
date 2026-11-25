@@ -1,0 +1,27 @@
+/* Admin-Bereich – ergänzt app.css */
+body.adm main { max-width: 860px; }
+.adm .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 16px; }
+.adm .tabs button { border: 1px solid var(--line); background: var(--bg2); color: var(--muted); padding: 8px 14px; border-radius: 999px; font-weight: 600; cursor: pointer; }
+.adm .tabs button.on { background: var(--gold); color: #14122b; border-color: var(--gold); }
+.adm .tabs .pill { margin-left: 4px; padding: 0 7px; }
+.adm table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.adm th, .adm td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.adm th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.adm tr:last-child td { border-bottom: 0; }
+.adm .tbl { overflow-x: auto; }
+.adm .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.adm .kpi { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.adm .kpi b { display: block; font-size: 1.5rem; }
+.adm .dup { color: var(--gold2); font-size: .8rem; }
+.adm .btn.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+.adm input[type=text], .adm input[type=password] { width: 100%; }
+.adm .login { max-width: 380px; margin: 40px auto; }
+.adm .pc { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 640px) {
+  .adm thead { display: none; }
+  .adm tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .adm td { border: 0; padding: 2px 0; }
+  .adm td:nth-child(2) { flex: 1; min-width: 50%; }
+  .adm td[data-l]::before { content: attr(data-l) ': '; color: var(--muted); }
+  .adm td:first-child:has(b) { flex-basis: 100%; }
+}

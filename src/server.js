@@ -75,36 +75,8 @@ const cleanName = (s, max) => String(s || '').replace(/\s+/g, ' ').trim().slice(
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.get('/api/version', (req, res) => res.json(U.current));
 
-// Update aus der App (nur Spielleiter)
-const manager = (req, res, next) => (R.canManage(req.player) ? next() : res.status(403).json({ error: 'Nur Admins dürfen das.' }));
-
-// Admins verwalten
-app.get('/api/admins', auth, manager, wrap(() => db.prepare('SELECT id, name, avatar, is_admin AS admin FROM players ORDER BY name').all()
-  .map((p) => ({ ...p, admin: !!p.admin }))));
-app.post('/api/admins/:id', auth, manager, wrap((req) => {
-  const id = Number(req.params.id);
-  const target = db.prepare('SELECT id, name, is_admin FROM players WHERE id = ?').get(id);
-  if (!target) throw G.httpError(404, 'Spieler nicht gefunden.');
-  const admin = !!req.body.admin;
-  if (!admin && target.is_admin && db.prepare('SELECT COUNT(*) AS c FROM players WHERE is_admin = 1').get().c <= 1) {
-    throw G.httpError(409, 'Es muss mindestens einen Admin geben.');
-  }
-  db.prepare('UPDATE players SET is_admin = ? WHERE id = ?').run(admin ? 1 : 0, id);
-  console.log(`[Admin] ${req.player.name} hat ${target.name} ${admin ? 'zum Admin gemacht' : 'als Admin entfernt'}`);
-  return { ok: true };
-}));
-// Admin-Rechte mit dem ADMIN_TOKEN aus der .env freischalten (Rettungsweg)
-app.post('/api/admin-claim', auth, limit(5, 3600_000), wrap((req) => {
-  if (!cfg.ADMIN_TOKEN || String(req.body.token || '') !== cfg.ADMIN_TOKEN) throw G.httpError(403, 'Token stimmt nicht.');
-  db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(req.player.id);
-  console.log(`[Admin] ${req.player.name} hat sich per ADMIN_TOKEN zum Admin gemacht`);
-  return { ok: true };
-}));
-app.get('/api/update', auth, manager, wrap(() => U.status()));
-app.post('/api/update/check', auth, manager, limit(20, 3600_000), async (req, res) => res.json(await U.check()));
-app.post('/api/update/apply', auth, manager, limit(10, 3600_000), async (req, res) => {
-  try { res.json(await U.apply()); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
-});
+// Admin-Bereich unter /admin (eigene Anmeldung, siehe src/admin.js)
+require('./admin').mount(app, { wrap });
 
 app.get('/api/genres', (req, res) => res.json(Q.genres()));
 
@@ -125,8 +97,6 @@ app.post('/api/push/test', auth, limit(10, 600_000), async (req, res) => {
 
 app.get('/api/me', auth, wrap((req) => ({
   id: req.player.id, name: req.player.name, avatar: req.player.avatar, games: G.gamesOfPlayer(req.player.id),
-  canManage: R.canManage(req.player), isAdmin: R.canManage(req.player), adminClaimable: !!cfg.ADMIN_TOKEN,
-  openReports: R.openCount(req.player),
 })));
 
 app.put('/api/me', auth, wrap((req) => {
@@ -201,8 +171,6 @@ app.get('/api/games/:code/stats', auth, member, wrap((req) => Stats.view(req.gam
 
 // Fragen melden und Meldungen bearbeiten
 app.post('/api/games/:code/report', auth, member, limit(30, 3600_000), wrap((req) => R.report(req.game, req.player, req.body)));
-app.get('/api/reports', auth, wrap((req) => ({ reasons: R.REASONS, items: R.list(req.player, req.query.status === 'done' ? 'done' : 'open') })));
-app.post('/api/reports/:qid', auth, wrap((req) => R.resolve(req.player, req.params.qid, req.body)));
 
 app.get('/api/games/:code/ledger', auth, member, wrap((req) => G.ledgerOf(req.game.id, req.player.id)));
 
@@ -235,6 +203,10 @@ const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.ht
   .replace(/(href|src)="\/app\.(css|js)"/g, `$1="/app.$2?v=${VERSION}"`);
 const sendIndex = (req, res) => res.set({ 'Cache-Control': 'no-cache', 'Content-Type': 'text/html; charset=utf-8' }).send(indexHtml);
 app.get(['/', '/index.html'], sendIndex);
+const adminHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.html'), 'utf8')
+  .replace(/(href|src)="\/(admin|app)\.(css|js)"/g, `$1="/$2.$3?v=${VERSION}"`);
+app.get(['/admin', '/admin/', '/Admin'], (req, res) => res.set({ 'Cache-Control': 'no-cache', 'Content-Type': 'text/html; charset=utf-8', 'X-Robots-Tag': 'noindex' }).send(adminHtml));
+app.get('/admin.html', (req, res) => res.redirect('/admin'));
 
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   index: false,
