@@ -7,6 +7,7 @@ const P = require('./push');
 const R = require('./reports');
 const Stats = require('./stats');
 const Backup = require('./backup');
+const U = require('./updater');
 
 const app = express();
 app.set('trust proxy', true); // hinter Reverse Proxy (NPM, Traefik, Caddy …)
@@ -71,6 +72,15 @@ const cleanName = (s, max) => String(s || '').replace(/\s+/g, ' ').trim().slice(
 // ---------- API ----------
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.get('/api/version', (req, res) => res.json(U.current));
+
+// Update aus der App (nur Spielleiter)
+const manager = (req, res, next) => (R.canManage(req.player) ? next() : res.status(403).json({ error: 'Nur Spielleiter dürfen Updates einspielen.' }));
+app.get('/api/update', auth, manager, wrap(() => U.status()));
+app.post('/api/update/check', auth, manager, limit(20, 3600_000), async (req, res) => res.json(await U.check()));
+app.post('/api/update/apply', auth, manager, limit(10, 3600_000), async (req, res) => {
+  try { res.json(await U.apply()); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 
 app.get('/api/genres', (req, res) => res.json(Q.genres()));
 

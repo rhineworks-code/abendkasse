@@ -145,6 +145,59 @@
     });
   }, 100);
 
+  // ---------- Update aus der App ----------
+  let upd = null, updAt = 0;
+  async function loadUpdate(force = false) {
+    if (!me || !me.canManage) return null;
+    if (!force && upd && Date.now() - updAt < 5 * 60_000) return upd;
+    try { upd = await api('/update'); updAt = Date.now(); } catch (e) { upd = null; }
+    return upd;
+  }
+  const shortSha = (s) => (s && s !== 'dev' ? s.slice(0, 7) : 'lokal');
+  function updateBanner() {
+    if (!upd || !upd.available) return '';
+    return `<div class="notice upd"><div>⬆️ <b>Update verfügbar</b>
+      <div class="small muted">${esc(upd.latest.message || 'Neue Version')}${upd.latest.behind > 1 ? ` (+${upd.latest.behind - 1} weitere Änderungen)` : ''}</div></div>
+      <div class="row"><button class="btn small" data-upd-apply>Jetzt einspielen</button><a class="btn ghost small" href="#/profil">Details</a></div></div>`;
+  }
+  function bindUpdate() {
+    document.querySelectorAll('[data-upd-apply]').forEach((b) => (b.onclick = applyUpdate));
+  }
+  async function applyUpdate() {
+    if (!upd || !upd.configured) { toast('Der Updater ist noch nicht eingerichtet – einmalig ./update.sh auf dem Server ausführen.', true); return; }
+    if (!confirm('Update jetzt einspielen?\n\nVorher wird automatisch eine Sicherung erstellt. Die App ist etwa eine Minute nicht erreichbar und lädt danach neu.')) return;
+    const from = upd.current.sha;
+    const ov = document.createElement('div');
+    ov.className = 'modal';
+    ov.innerHTML = `<div class="sheet center"><div class="big">⬆️</div><h2>Update wird eingespielt …</h2>
+      <p class="muted" id="updmsg">Sicherung wird erstellt …</p><div class="spinner"></div></div>`;
+    document.body.appendChild(ov);
+    const msg = (t) => { const el = document.getElementById('updmsg'); if (el) el.textContent = t; };
+    try {
+      const r = await api('/update/apply', { method: 'POST' });
+      msg(r.finished ? 'Updater fertig – prüfe die Version …' : 'Neue Version wird geladen und gestartet …');
+    } catch (e) {
+      // Verbindung bricht ab, wenn die App schon neu startet – das ist normal
+      if (!/Failed to fetch|NetworkError|Load failed|Fehler 50[234]/.test(e.message)) { ov.remove(); toast(e.message, true); return; }
+      msg('App startet neu …');
+    }
+    const t0 = Date.now();
+    const poll = async () => {
+      try {
+        const v = await fetch('/api/version', { cache: 'no-store' }).then((r) => r.json());
+        if (v.sha && v.sha !== from) { msg('Fertig! Lade neu …'); setTimeout(() => location.reload(), 800); return; }
+      } catch (e) { msg('App startet neu …'); }
+      if (Date.now() - t0 > 180_000) {
+        ov.remove();
+        toast('Keine neue Version erkannt. Läuft der Updater-Container? (docker logs abendkasse-updater)', true);
+        upd = null; route();
+        return;
+      }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 4000);
+  }
+
   // ---------- Router ----------
   window.addEventListener('hashchange', route);
 
@@ -155,6 +208,7 @@
       if (parts[0] === 'restore') return viewRestore();
       if (!token) return viewWelcome(parts[0] === 'join' ? parts[1] : null);
       if (!me) { me = await api('/me'); setWho(); syncPush(); }
+      await loadUpdate();
       if (parts[0] === 'join' && parts[1]) {
         const r = await api('/games/join', { method: 'POST', body: { code: parts[1] } });
         me = null;
@@ -239,6 +293,7 @@
         <label class="lbl">Schriftgröße</label>
         <div class="seg" id="ftseg">${[['normal', 'Normal'], ['large', 'Groß'], ['xlarge', 'Sehr groß']].map(([k, v]) => `<button type="button" data-f="${k}" class="${(localStorage.getItem('ak_font') || 'normal') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
       </div>
+      ${me.canManage ? '<div class="card" id="updcard"><h2 style="margin-top:0">⬆️ Version & Updates</h2><div id="updbox" class="small muted">Prüfe …</div></div>' : ''}
       <div class="card" id="pushcard">
         <h2 style="margin-top:0">🔔 Benachrichtigungen</h2>
         <div id="pushbox" class="muted small">Prüfe …</div>
@@ -250,6 +305,7 @@
         <div class="row" style="margin-top:14px"><a class="btn ghost" href="#/">Zurück</a><button class="btn ghost" id="lo">Abmelden</button></div>
       </div>`;
     renderPushBox();
+    renderUpdateBox();
     document.querySelectorAll('#thseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_theme', b.dataset.t); applyLook(); viewProfile(); }));
     document.querySelectorAll('#ftseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_font', b.dataset.f); applyLook(); viewProfile(); }));
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
@@ -269,6 +325,31 @@
         await api('/me/avatar', { method: 'POST', body: { image } });
         toast('Profilbild gespeichert'); viewProfile();
       } catch (e) { toast(e.message || 'Bild konnte nicht gelesen werden.', true); }
+    };
+  }
+
+  async function renderUpdateBox(force = false) {
+    const box = document.getElementById('updbox');
+    if (!box) return;
+    const u = await loadUpdate(force);
+    if (!u) { box.textContent = 'Update-Status nicht verfügbar.'; return; }
+    const d = (x) => (x ? new Date(x).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '');
+    box.innerHTML = `
+      <div class="srow" style="grid-template-columns:1fr 2fr"><span class="slabel">Installiert</span><span><code>${shortSha(u.current.sha)}</code> ${d(u.current.date)}</span></div>
+      <div class="srow" style="grid-template-columns:1fr 2fr"><span class="slabel">Neueste</span><span>${u.latest ? `<code>${shortSha(u.latest.sha)}</code> ${d(u.latest.date)}` : '<span class="muted">noch nicht geprüft</span>'}</span></div>
+      ${u.error ? `<p class="small" style="color:var(--bad)">Prüfung fehlgeschlagen: ${esc(u.error)}</p>` : ''}
+      ${u.current.sha === 'dev' ? '<p class="small">Diese Version wurde lokal gebaut – ein Vergleich ist nicht möglich.</p>' : ''}
+      ${u.available ? `<p style="color:var(--text);margin:12px 0 6px"><b>Was ist neu:</b></p><ul class="changes">${(u.latest.changes.length ? u.latest.changes : [u.latest.message]).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
+        : u.latest && u.current.sha !== 'dev' ? '<p style="color:var(--ok);margin:12px 0">✅ Du hast die neueste Version.</p>' : ''}
+      ${!u.configured ? '<p class="small">Der Updater ist noch nicht eingerichtet: einmalig <code>./update.sh</code> auf dem Server ausführen (legt das Token an und startet den Updater-Container).</p>' : ''}
+      <div class="row" style="margin-top:10px">
+        ${u.available ? `<button class="btn small" data-upd-apply ${u.configured ? '' : 'disabled'}>Jetzt einspielen</button>` : ''}
+        <button class="btn ghost small" id="updcheck">Nach Updates suchen</button>
+      </div>`;
+    bindUpdate();
+    document.getElementById('updcheck').onclick = async () => {
+      try { upd = await api('/update/check', { method: 'POST' }); updAt = Date.now(); toast(upd.available ? 'Update verfügbar!' : 'Keine neue Version.'); renderUpdateBox(); }
+      catch (e) { toast(e.message, true); }
     };
   }
 
@@ -319,6 +400,7 @@
 
     $app.innerHTML = `
       <div class="spread"><h1>Hallo ${esc(me.name)}!</h1><a href="#/profil" class="row small">${avatar(me, 28)} Profil</a></div>
+      ${updateBanner()}
       ${me.canManage ? `<a class="notice muted-n" href="#/meldungen" style="color:var(--text)"><span>⚑ Gemeldete Fragen</span><span class="pill">${me.openReports} offen</span></a>` : ''}
       <h2>Deine Spiele</h2>
       <div class="gamelist">
@@ -365,6 +447,7 @@
       document.querySelectorAll('#mode button').forEach((x) => x.classList.toggle('on', x === b));
     }));
     bindDiffSeg('diff', (d) => (difficulty = d));
+    bindUpdate();
     document.getElementById('join').onsubmit = async (ev) => {
       ev.preventDefault();
       try { const r = await api('/games/join', { method: 'POST', body: { code: ev.target.code.value } }); location.hash = `#/g/${r.code}`; }
@@ -419,6 +502,7 @@
         ${g.players.length < g.maxPlayers ? `<div class="player"><div class="nm muted">Wartet auf Mitspieler …</div><div class="small muted" style="margin:4px 0 8px">Code <b>${g.code}</b></div><button class="btn small" data-invite>Jetzt einladen</button></div>` : ''}
       </div>
 
+      ${updateBanner()}
       ${notices(g)}
 
       <nav class="tabs">
@@ -431,6 +515,7 @@
 
     document.querySelectorAll('[data-invite]').forEach((b) => (b.onclick = () => openInvite(g)));
     bindNotices(g);
+    bindUpdate();
     // Direkt nach dem Erstellen: Einladen anbieten
     if (sessionStorage.getItem('ak_new') === g.code) { sessionStorage.removeItem('ak_new'); openInvite(g); }
 

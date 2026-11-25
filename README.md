@@ -15,9 +15,17 @@ Danach läuft das Spiel unter `http://<server>:8020` (Port über `HOST_PORT` in 
 
 ## Update
 
+**Aus der App (empfohlen):** Gibt es eine neue Version, sehen Spielleiter oben den Hinweis **„⬆️ Update verfügbar“** mit der Liste der Änderungen (und bekommen einen Push). **„Jetzt einspielen“** legt automatisch eine Sicherung an, lädt das neue Image und startet Abendkasse neu. Nach etwa einer Minute lädt die Seite von selbst neu. Unter **Profil → Version & Updates** stehen die installierte und die neueste Version, dazu der Knopf „Nach Updates suchen“. Die App prüft alle 6 Stunden auf GitHub, ob ein neues Image **fertig gebaut** ist.
+
+So funktioniert's: In der `docker-compose.yml` läuft neben der App ein kleiner **Updater** (Watchtower, gepflegter Fork `nicholas-fedor/watchtower`). Nur er hat Zugriff auf Docker, er hat keinen Port nach außen und aktualisiert ausschließlich Abendkasse. Die App stößt ihn über das geheime `UPDATE_TOKEN` an. Das Token erzeugt `update.sh` beim ersten Lauf automatisch in der `.env`.
+
+**Einmalig einrichten:** Nach dem Update auf diese Version einmal `./update.sh` ausführen. Das holt die neue `docker-compose.yml` mit dem Updater, legt das Token an und startet beides.
+
+**Per Kommandozeile:**
 ```bash
 ./update.sh
 ```
+Das Update aus der App tauscht nur das App-Image. Ändern sich `docker-compose.yml` oder `update.sh` selbst (selten, steht dann in den Änderungen), einmal `./update.sh` ausführen.
 
 Das Skript sichert `data/` nach `backups/` (die letzten 5 bleiben), holt den neuen Stand von GitHub (`git pull`), lädt das neue Docker-Image, startet den Container neu und räumt alte Images auf.
 Das Image wird bei jedem Push auf `main` automatisch per GitHub Actions gebaut (`ghcr.io/rhineworks-code/abendkasse:latest`, amd64 + arm64).
@@ -97,6 +105,9 @@ Ein Spiel, das nach 20 Uhr erstellt wird, startet am nächsten Tag. Läuft der C
 | `REMINDER_HOUR` | 18 | Erinnerungs-Push, falls noch nicht gespielt |
 | `BACKUP_PATH` | ./backups/auto | Zielordner der nächtlichen Sicherung auf dem Server |
 | `BACKUP_HOUR` / `BACKUP_KEEP` | 3 / 14 | Uhrzeit der Sicherung und wie viele Tage aufbewahrt werden |
+| `UPDATE_TOKEN` | (automatisch) | Geheimes Token für den Updater, wird von `update.sh` erzeugt |
+| `UPDATE_CHECK_HOURS` | 6 | Wie oft die App nach Updates sucht |
+| `UPDATE_REPO` | rhineworks-code/abendkasse | GitHub-Repo für die Update-Prüfung (leer = aus) |
 | `VAPID_SUBJECT` | mailto:abendkasse@example.com | Absenderangabe für Web-Push (beliebige Mail- oder https-Adresse) |
 | `PAYOUT_HOUR` | 20 | Stunde der Auszahlung |
 | `OPEN_HOUR` | 0 | Ab dieser Stunde sind die Tagesfragen offen |
@@ -208,6 +219,7 @@ src/stats.js      Statistik und Abzeichen
 src/reports.js    Gemeldete Fragen, Korrekturen am Katalog
 src/backup.js     Nächtliche Sicherung
 src/push.js       Web-Push
+src/updater.js    Update-Prüfung (GitHub) und Anstoßen des Updaters
 questions/        mitgelieferte Fragen (623 in 8 Genres inkl. Wahr/Falsch, Reihenfolge und 60 Flaggen, dazu 59 Schätzfragen; alle mit Erklärung)
 public/           Frontend
 ```

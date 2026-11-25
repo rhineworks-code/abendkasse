@@ -332,3 +332,11 @@ a.notice { text-decoration: none; }
 .tabs { overflow-x: auto; scrollbar-width: none; }
 .tabs a { white-space: nowrap; }
 @media (max-width: 420px) { .tabs a { padding: 10px 10px; } .srow { grid-template-columns: 1.1fr repeat(2, 1fr); } }
+
+/* Update */
+.notice.upd { background: rgba(60,207,142,.10); border-color: rgba(60,207,142,.55); }
+.changes { margin: 0 0 6px 18px; padding: 0; color: var(--text); }
+.changes li { margin: 3px 0; }
+.spinner { width: 34px; height: 34px; margin: 10px auto 4px; border: 3px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sheet.center { text-align: center; }

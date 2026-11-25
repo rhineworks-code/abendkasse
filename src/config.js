@@ -33,6 +33,12 @@ module.exports = {
   BACKUP_HOUR: int(process.env.BACKUP_HOUR, 3),
   BACKUP_KEEP: int(process.env.BACKUP_KEEP, 14),
 
+  // Update aus der App (Watchtower-Updater im selben Docker-Netz)
+  UPDATE_REPO: process.env.UPDATE_REPO ?? 'rhineworks-code/abendkasse',
+  UPDATE_URL: process.env.UPDATE_URL || 'http://updater:8080',
+  UPDATE_TOKEN: process.env.UPDATE_TOKEN || '',
+  UPDATE_CHECK_HOURS: int(process.env.UPDATE_CHECK_HOURS, 6),
+
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || '',
   WEBHOOK_URL: process.env.WEBHOOK_URL || '',           // optional: z. B. Home-Assistant-Webhook
 };

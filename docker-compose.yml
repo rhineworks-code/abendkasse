@@ -6,6 +6,9 @@ services:
     # build: .             # nur zum lokalen Selbstbauen statt Image
     container_name: abendkasse
     restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true      # darf vom Updater aktualisiert werden
+      - com.centurylinklabs.watchtower.scope=abendkasse
     ports:
       - "${HOST_PORT:-8020}:8084"
     volumes:
@@ -31,6 +34,24 @@ services:
       REMINDER_HOUR: ${REMINDER_HOUR:-18}
       BACKUP_HOUR: ${BACKUP_HOUR:-3}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      UPDATE_TOKEN: ${UPDATE_TOKEN:-}
+      UPDATE_URL: http://updater:8080
+
+  # Updater: zieht auf Knopfdruck in der App das neue Image und startet Abendkasse neu.
+  # Nur er hat Zugriff auf Docker; nach außen ist er nicht erreichbar (kein Port).
+  updater:
+    image: ghcr.io/nicholas-fedor/watchtower:latest
+    container_name: abendkasse-updater
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --http-api-update --label-enable --scope abendkasse --cleanup
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: ${UPDATE_TOKEN:-}
+      TZ: Europe/Berlin
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+      - com.centurylinklabs.watchtower.scope=abendkasse
       POINTS_PER_CORRECT: ${POINTS_PER_CORRECT:-10}
       PERFECT_DAY_BONUS: ${PERFECT_DAY_BONUS:-20}
       WEEK_WIN_BONUS: ${WEEK_WIN_BONUS:-100}
