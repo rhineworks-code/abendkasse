@@ -672,7 +672,7 @@ function scoreRound(day, playerId, duelPts = 0) {
   const rows = answerRows(day.id, playerId);
   const opens = opensOf(day.id, playerId);
   const total = day.questions.length;
-  const o = dayOpts(day);
+  const opt = dayOpts(day);
   let correct = 0, base = 0, tempo = 0, tempoCount = 0, stakeNet = 0, stakeWon = 0, stakeLost = 0;
   day.questions.forEach((q, i) => {
     const a = rows[i];
@@ -680,7 +680,7 @@ function scoreRound(day, playerId, duelPts = 0) {
     const stake = (a ? a.stake : opens[i]?.stake) || 0;
     if (ok) {
       correct++; base += cfg.POINTS_PER_CORRECT;
-      if (isFast(o, a)) { tempo += cfg.TEMPO_BONUS; tempoCount++; }
+      if (isFast(opt, a)) { tempo += cfg.TEMPO_BONUS; tempoCount++; }
     }
     if (stake) { if (ok) { stakeNet += stake; stakeWon += stake; } else { stakeNet -= stake; stakeLost += stake; } }
   });
@@ -1041,7 +1041,7 @@ function dayView(game, me, date, st, kind = 'day') {
   const opens = opensOf(day.id, me.id);
   const myJokers = jokersOf(day.id, me.id);
   const now = Date.now();
-  const o = dayOpts(day);
+  const opt = dayOpts(day);
 
   const view = {
     ...base, genre: day.genre, week: day.week_no,
@@ -1056,14 +1056,14 @@ function dayView(game, me, date, st, kind = 'day') {
         removed: myJokers.find((j) => j.idx === i)?.removed || [] });
       if (q.type === 'order') item.items = q.items; else item.options = q.options;
       if (o && !a) item.elapsed = now - o.opened_at;
-      if (a) item.fast = isFast(o, a);
+      if (a) item.fast = isFast(opt, a);
       if (reveal) Object.assign(item, { id: q.id, answer: q.answer, explain: q.explain || '', correct: isCorrect(q, a) });
       return item;
     }),
-    jokers: { total: o.jokers, left: Math.max(0, o.jokers - myJokers.length) },
-    stake: { enabled: o.stakes, steps: o.stakes ? stakeSteps() : [0], available: stakeAvailable(game, me.id) },
-    tempo: o.tempo ? { seconds: cfg.TEMPO_SECONDS, bonus: cfg.TEMPO_BONUS } : null,
-    options: o,
+    jokers: { total: opt.jokers, left: Math.max(0, opt.jokers - myJokers.length) },
+    stake: { enabled: opt.stakes, steps: opt.stakes ? stakeSteps() : [0], available: stakeAvailable(game, me.id) },
+    tempo: opt.tempo ? { seconds: cfg.TEMPO_SECONDS, bonus: cfg.TEMPO_BONUS } : null,
+    options: opt,
     progress: players.map((p) => ({
       id: p.id, name: p.name, avatar: p.avatar, me: p.id === me.id,
       answered: db.prepare('SELECT COUNT(*) AS c FROM answers WHERE day_id = ? AND player_id = ?').get(day.id, p.id).c,
@@ -1091,7 +1091,7 @@ function dayView(game, me, date, st, kind = 'day') {
         correct: r.correct, total: r.total, points: r.points, detail: r.detail ? JSON.parse(r.detail) : null,
         answers: Object.fromEntries(Object.entries(pr).map(([i, a]) => [i, shownAnswer(day.questions[i], a)])),
         stakes: Object.fromEntries(Object.entries(pr).map(([i, a]) => [i, a.stake])),
-        fast: Object.entries(pr).filter(([i, a]) => isCorrect(day.questions[i], a) && isFast(o, a)).map(([i]) => +i),
+        fast: Object.entries(pr).filter(([i, a]) => isCorrect(day.questions[i], a) && isFast(opt, a)).map(([i]) => +i),
         jokers: jokersOf(day.id, p.id).map((j) => j.idx) };
     });
   }
