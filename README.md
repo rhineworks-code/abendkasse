@@ -85,6 +85,8 @@ Damit das fair bleibt, müssen **alle Mitspieler zustimmen**. Die Anfrage ersche
 
 **Erinnerung:** Um **18 Uhr** kommt ein Push an alle, die ihre Tagesrunde noch nicht gespielt haben.
 
+**Als App installieren:** Beim Start fragt Abendkasse einmal per Popup, ob sie als App installiert werden soll. Auf Android sowie in Chrome und Edge am PC öffnet der Knopf „Installieren“ direkt den Installationsdialog. Auf iPhone und iPad stehen die Schritte im Popup: Teilen → „Zum Home-Bildschirm“. „Später“ fragt nach 7 Tagen erneut, „Nicht mehr fragen“ nie wieder. Ist die App schon installiert, erscheint kein Popup. Unter **Profil → App** gibt es den Weg jederzeit. Die Installation braucht HTTPS.
+
 **Darstellung:** Unter **Profil → Darstellung** stellst du Hell, Dunkel oder Automatisch (nach Systemeinstellung) ein, außerdem die Schriftgröße Normal, Groß oder Sehr groß. Das gilt pro Gerät.
 
 **Punkte (Standard):** 10 pro richtige Antwort · +20 für eine perfekte Runde · +2 Tempo-Bonus · ±Einsatz · +20 für die Duell-Frage · +100 für den Wochensieg. Im Konto ist jede Buchung einzeln aufgeschlüsselt.

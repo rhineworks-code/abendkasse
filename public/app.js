@@ -98,7 +98,7 @@
   }, 1000);
 
   // ---------- Push ----------
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
   if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -144,6 +144,89 @@
       el.classList.toggle('fast', fast);
     });
   }, 100);
+
+  // ---------- App installieren (PWA) ----------
+  let deferredInstall = null;
+  const isSafariLike = isIOS; // auf iOS nutzen alle Browser WebKit und „Zum Home-Bildschirm“
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    if (token) setTimeout(maybeInstallPopup, 800);
+    const pb = document.getElementById('installbox'); if (pb) renderInstallBox();
+  });
+  window.addEventListener('appinstalled', () => {
+    localStorage.setItem('ak_installed', '1');
+    deferredInstall = null;
+    document.querySelector('.modal.install')?.remove();
+    toast('Abendkasse ist jetzt als App installiert 🎉');
+  });
+  const canInstall = () => !standalone && (!!deferredInstall || isSafariLike);
+  function installSnoozed() {
+    const v = localStorage.getItem('ak_install_later');
+    return v === 'never' || (v && Date.now() - +v < 7 * 864e5);
+  }
+  function maybeInstallPopup() {
+    if (!token || standalone || localStorage.getItem('ak_installed') || installSnoozed()) return;
+    if (document.querySelector('.modal')) return; // nicht über andere Dialoge legen
+    if (deferredInstall || isSafariLike) openInstall();
+  }
+  const iosSteps = `
+    <ol class="steps">
+      <li>Unten (iPad: oben rechts) auf <b>Teilen</b> tippen <span class="shareico">⬆︎</span></li>
+      <li>Nach unten scrollen und <b>„Zum Home-Bildschirm“</b> wählen</li>
+      <li>Oben rechts auf <b>„Hinzufügen“</b> tippen</li>
+      <li>Abendkasse ab jetzt <b>über das Symbol auf dem Home-Bildschirm</b> öffnen</li>
+    </ol>`;
+  async function doInstall() {
+    if (!deferredInstall) return false;
+    deferredInstall.prompt();
+    const { outcome } = await deferredInstall.userChoice.catch(() => ({ outcome: 'dismissed' }));
+    deferredInstall = null;
+    if (outcome !== 'accepted') localStorage.setItem('ak_install_later', String(Date.now()));
+    return outcome === 'accepted';
+  }
+  function openInstall() {
+    const native = !!deferredInstall;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal install';
+    wrap.innerHTML = `
+      <div class="sheet" role="dialog" aria-label="App installieren">
+        <div class="spread"><h2 style="margin:0">📲 Als App installieren</h2><button class="x" aria-label="Schließen">✕</button></div>
+        <div class="row" style="margin:14px 0 6px; gap:14px; flex-wrap:nowrap">
+          <img src="/icon-192.png" alt="" width="56" height="56" style="border-radius:14px; flex:none">
+          <p class="small" style="margin:0">Abendkasse startet dann wie eine richtige App vom Home-Bildschirm bzw. Startmenü – ohne Browserleiste und mit Push-Nachrichten${isIOS ? ' (die gibt es auf dem iPhone nur so)' : ''}.</p>
+        </div>
+        ${native ? '' : iosSteps}
+        <div class="row" style="margin-top:14px">
+          ${native ? '<button class="btn" id="instyes">Installieren</button>' : '<button class="btn" id="instok">Verstanden</button>'}
+          <button class="btn ghost" id="instlater">Später</button>
+        </div>
+        <p class="small" style="margin:12px 0 0"><a href="#" id="instnever" class="muted">Nicht mehr fragen</a></p>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    const later = () => { localStorage.setItem('ak_install_later', String(Date.now())); close(); };
+    wrap.onclick = (ev) => { if (ev.target === wrap) later(); };
+    wrap.querySelector('.x').onclick = later;
+    wrap.querySelector('#instlater').onclick = later;
+    wrap.querySelector('#instnever').onclick = (ev) => { ev.preventDefault(); localStorage.setItem('ak_install_later', 'never'); close(); toast('Okay – findest du jederzeit unter Profil.'); };
+    const ok = wrap.querySelector('#instok'); if (ok) ok.onclick = later;
+    const yes = wrap.querySelector('#instyes'); if (yes) yes.onclick = async () => { close(); await doInstall(); };
+  }
+  // Bereich im Profil
+  function renderInstallBox() {
+    const box = document.getElementById('installbox');
+    if (!box) return;
+    if (standalone || localStorage.getItem('ak_installed')) { box.innerHTML = '<p style="margin:0">✅ Abendkasse läuft als App auf diesem Gerät.</p>'; return; }
+    if (deferredInstall) {
+      box.innerHTML = '<p class="small muted" style="margin:0 0 10px">Installiere Abendkasse auf diesem Gerät – startet wie eine App, ohne Browserleiste.</p><button class="btn small" id="instnow">App installieren</button>';
+      document.getElementById('instnow').onclick = doInstall;
+    } else if (isSafariLike) {
+      box.innerHTML = `<p class="small muted" style="margin:0">So geht's auf dem iPhone/iPad:</p>${iosSteps}`;
+    } else {
+      box.innerHTML = '<p class="small muted" style="margin:0">Im Browsermenü (⋮) gibt es „App installieren“ bzw. „Zum Startbildschirm hinzufügen“. Falls nicht: Die Installation braucht HTTPS und Chrome, Edge oder Samsung Internet.</p>';
+    }
+  }
 
   // ---------- Update aus der App ----------
   let upd = null, updAt = 0;
@@ -207,7 +290,7 @@
     try {
       if (parts[0] === 'restore') return viewRestore();
       if (!token) return viewWelcome(parts[0] === 'join' ? parts[1] : null);
-      if (!me) { me = await api('/me'); setWho(); syncPush(); }
+      if (!me) { me = await api('/me'); setWho(); syncPush(); setTimeout(maybeInstallPopup, 1500); }
       await loadUpdate();
       if (parts[0] === 'join' && parts[1]) {
         const r = await api('/games/join', { method: 'POST', body: { code: parts[1] } });
@@ -287,6 +370,10 @@
         </form>
       </div>
       <div class="card">
+        <h2 style="margin-top:0">📲 App</h2>
+        <div id="installbox"></div>
+      </div>
+      <div class="card">
         <h2 style="margin-top:0">🎨 Darstellung</h2>
         <label class="lbl" style="margin-top:0">Design</label>
         <div class="seg" id="thseg">${[['auto', 'Automatisch'], ['dark', 'Dunkel'], ['light', 'Hell']].map(([k, v]) => `<button type="button" data-t="${k}" class="${(localStorage.getItem('ak_theme') || 'auto') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
@@ -306,6 +393,7 @@
       </div>`;
     renderPushBox();
     renderUpdateBox();
+    renderInstallBox();
     document.querySelectorAll('#thseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_theme', b.dataset.t); applyLook(); viewProfile(); }));
     document.querySelectorAll('#ftseg button').forEach((b) => (b.onclick = () => { localStorage.setItem('ak_font', b.dataset.f); applyLook(); viewProfile(); }));
     document.getElementById('cp').onclick = () => { navigator.clipboard?.writeText(token); toast('Kopiert'); };
