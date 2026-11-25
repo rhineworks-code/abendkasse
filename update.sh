@@ -19,7 +19,15 @@ ls -1t backups/data-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f      # nu
 
 if [ -d .git ]; then
   echo "Hole neuen Stand von GitHub …"
-  git pull --ff-only --autostash -q || echo "Warnung: git pull fehlgeschlagen – lokale Änderungen? (git status)"
+  git fetch -q origin
+  if ! git merge --ff-only -q origin/main 2>/dev/null; then
+    # Verlauf auf GitHub wurde neu geschrieben: auf den GitHub-Stand setzen (.env und data/ sind nicht im Repo)
+    if git diff --quiet && git diff --cached --quiet; then
+      git reset -q --hard origin/main && echo "Auf den aktuellen GitHub-Stand gesetzt."
+    else
+      echo "Warnung: lokale Änderungen an Repo-Dateien – bitte prüfen (git status)."
+    fi
+  fi
 fi
 
 docker compose pull
