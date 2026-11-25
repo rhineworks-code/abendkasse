@@ -6,10 +6,14 @@ const fmt = new Intl.DateTimeFormat('en-CA', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
 });
 
-function now() {
-  const p = Object.fromEntries(fmt.formatToParts(new Date()).map((x) => [x.type, x.value]));
+// Datum/Uhrzeit in der Spiel-Zeitzone für einen beliebigen Zeitpunkt
+function at(d) {
+  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
   return { date: `${p.year}-${p.month}-${p.day}`, hour: +p.hour, minute: +p.minute, second: +p.second };
 }
+const now = () => at(new Date());
+// SQLite-Zeitstempel (UTC, „YYYY-MM-DD HH:MM:SS“) -> Spiel-Zeitzone
+const fromDb = (s) => at(new Date(String(s).replace(' ', 'T') + 'Z'));
 
 function addDays(date, n) {
   const t = new Date(date + 'T12:00:00Z');
@@ -29,4 +33,4 @@ function msUntilHour(h) {
   return s * 1000;
 }
 
-module.exports = { now, addDays, diffDays, msUntilHour };
+module.exports = { now, at, fromDb, addDays, diffDays, msUntilHour };

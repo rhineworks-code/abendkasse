@@ -471,17 +471,34 @@ function onRoundFinished(game, player, day) {
       : { title: `${player.name} hat gespielt 🎯`, body: `${player.name} hat die ${roundName(day)} abgeschlossen – jetzt bist du dran!`, url, tag: `done-${game.code}-${day.id}` });
   }
 
-  // Extrarunde anbieten: normale Tagesrunde, alle fertig, vor EXTRA_BEFORE_HOUR
+  maybeOfferExtra(game, day, players);
+}
+
+// Wann hat ein Spieler seine Runde abgeschlossen? (letzte Antwort bzw. Duell-Schätzung, UTC)
+function finishedAt(day, playerId) {
+  const a = db.prepare('SELECT MAX(answered_at) AS t FROM answers WHERE day_id = ? AND player_id = ?').get(day.id, playerId).t;
+  const d = day.duel ? db.prepare('SELECT answered_at AS t FROM duel_answers WHERE day_id = ? AND player_id = ?').get(day.id, playerId)?.t : null;
+  return [a, d].filter(Boolean).sort().pop() || null;
+}
+
+// Extrarunde anbieten, wenn alle die heutige Tagesrunde vor EXTRA_BEFORE_HOUR abgeschlossen haben.
+// Wird beim Abschluss geprüft und zusätzlich beim Öffnen des Spiels (falls der Moment verpasst wurde,
+// z. B. weil der Server gerade aktualisiert wurde).
+function maybeOfferExtra(game, day, players = gamePlayers(game.id)) {
   const n = T.now();
-  if (day.kind === 'day' && !day.replay && day.date === n.date && n.hour < cfg.EXTRA_BEFORE_HOUR && players.length >= 2
-      && players.every((p) => finishedRound(day, p.id)) && !getExtraOffer(game, n.date)) {
-    saveExtraOffer(game, n.date, { ok: [], declinedBy: null, at: new Date().toISOString() });
-    P.send(players.map((p) => p.id), {
-      title: 'Lust auf eine Extrarunde? 🎲',
-      body: `Ihr habt beide vor ${hh(cfg.EXTRA_BEFORE_HOUR)} Uhr gespielt. ${cfg.EXTRA_QUESTIONS} Extra-Fragen – wenn beide zustimmen.`,
-      url: gameUrl(game), tag: `extra-${game.code}-${n.date}`,
-    });
-  }
+  if (!day || day.kind !== 'day' || day.replay || day.paid || day.date !== n.date || isAfterPayout(n)) return false;
+  if (players.length < 2 || getExtraOffer(game, n.date)) return false;
+  if (!players.every((p) => roundComplete(day, p.id))) return false;
+  const last = players.map((p) => finishedAt(day, p.id)).sort().pop();
+  const t = last ? T.fromDb(last) : n;
+  if (t.date !== n.date || t.hour >= cfg.EXTRA_BEFORE_HOUR) return false;
+  saveExtraOffer(game, n.date, { ok: [], declinedBy: null, at: new Date().toISOString() });
+  P.send(players.map((p) => p.id), {
+    title: 'Lust auf eine Extrarunde? 🎲',
+    body: `Ihr habt beide vor ${hh(cfg.EXTRA_BEFORE_HOUR)} Uhr gespielt. ${cfg.EXTRA_QUESTIONS} Extra-Fragen – wenn beide zustimmen.`,
+    url: gameUrl(game), tag: `extra-${game.code}-${n.date}`,
+  });
+  return true;
 }
 
 // ---------- Extrarunde ----------
@@ -932,7 +949,7 @@ function overview(game, me) {
       day: n.date < game.week_start ? 0 : T.diffDays(game.week_start, n.date) + 1 },
     players: players.map((p) => ({ ...p, week: weekScores[p.id] || 0, me: p.id === me.id })),
     days, weeks, requests: reqView, today: n.date, afterPayout: isAfterPayout(n),
-    extra: extraView(game, me), push: P.countFor(me.id) > 0,
+    extra: (maybeOfferExtra(game, getDay(game.id, n.date, 'day'), players), extraView(game, me)), push: P.countFor(me.id) > 0,
     rules: { perCorrect: cfg.POINTS_PER_CORRECT, perfectBonus: cfg.PERFECT_DAY_BONUS, weekBonus: cfg.WEEK_WIN_BONUS, payoutHour: cfg.PAYOUT_HOUR,
       extraBefore: cfg.EXTRA_BEFORE_HOUR, extraQuestions: cfg.EXTRA_QUESTIONS, maxStake: cfg.MAX_STAKE,
       tempoSeconds: cfg.TEMPO_SECONDS, tempoBonus: cfg.TEMPO_BONUS, duelPoints: cfg.DUEL_POINTS, reminderHour: cfg.REMINDER_HOUR },
